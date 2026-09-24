@@ -1,0 +1,8 @@
+# 系统与编辑器生成的文件
+.DS_Store
+Thumbs.db
+desktop.ini
+node_modules/
+*.log
+# 本地推送脚本
+push_to_github.bat
