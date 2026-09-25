@@ -53,6 +53,7 @@ class Player {
       h: this.K.H, crouch: false,                    // 下蹲：碰撞箱降低 1/3
       cling: null, clingCd: 0,                       // 小扫：贴墙 / 倒挂
       fuel: this.C.fuel || 0, jetOn: false, slamming: false, stompCd: 0, // 阿特拉斯：喷气燃料、地面猛击
+      invulnT: 0, hist: null, rewindCd: 0, blinkFx: null,               // 赤影：闪现无敌、回溯记录
     });
   }
   hurt() { const t = this.crouch ? 3 : 6; return { x: this.x + 4, y: this.y + t, w: this.w - 8, h: this.h - t - 2 }; }
@@ -150,6 +151,7 @@ class Player {
 
     // ---- 冲刺（阿特拉斯：空中 = 地面猛击，地上 = 液压踏地）----
     if (this.C.jet && I.hit('dash')) this.atlasDash(g, I, ctl);
+    else if (this.C.blink && I.hit('dash')) this.vesperBlink(g, I, ctl); // 赤影：相位闪现
     else if (I.hit('dash')) {
       if (this.dashLock > 0) { Sound.sfx.denied(); g.hudDeny = 0.6; Input.rumble(0.3, 0, 120); }
       else if (this.canDash && this.dashCd <= 0) {
@@ -170,7 +172,8 @@ class Player {
 
     // ---- 攻击 / 切换武器 ----
     this.atkCd -= dt; if (this.atkT > 0) this.atkT -= dt; else this.atkHeavy = false;
-    if (I.hit('swap')) g.swapWeapon();
+    if (this.C.rewind) { this.vesperTrack(dt, g); if (I.hit('swap')) this.vesperRewind(g); } // 赤影：换武器键 = 回溯
+    else if (I.hit('swap')) g.swapWeapon();
     const wk = Inventory.weapon(), WP = WPN[wk];
     if (I.hit('attack')) this.atkBuf = 0.12; else this.atkBuf = (this.atkBuf || 0) - dt; // 攻击输入缓冲：冷却快结束时按下也会出手
     if (this.atkBuf > 0 && WP && this.atkCd <= 0 && !g.noAttack) {
@@ -331,7 +334,7 @@ class Player {
       return;
     }
     this.drawBody(ctx, this.x, this.y, this.facing, this.sx, this.sy, g);
-    if (this.atkSwing > 0) { if (this.C.weapon === 'brush') this.drawBrushSwing(ctx, g); else if (this.C.weapon === 'fist') this.drawFistSwing(ctx, g); else this.drawSlash(ctx, g); }
+    if (this.atkSwing > 0) { if (this.C.weapon === 'brush') this.drawBrushSwing(ctx, g); else if (this.C.weapon === 'fist') this.drawFistSwing(ctx, g); else if (this.C.weapon === 'datablade') this.drawDataSwing(ctx, g); else this.drawSlash(ctx, g); }
     // 蓄力光：满了以后变成金色并闪烁
     const Wc = WPN[Inventory.weapon()];
     if (Wc && Wc.charge && this.chargeT > 0.12) {

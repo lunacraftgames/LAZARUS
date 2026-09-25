@@ -180,6 +180,7 @@ const Sound = (() => {
     heartbeat() { tone({ type: 'sine', f: 70, f2: 40, dur: 0.16, vol: 0.35 }); tone({ type: 'sine', f: 60, f2: 35, dur: 0.18, vol: 0.28, t: 0.2 }); },
     hatch() { noise({ f: 1200, f2: 200, dur: 0.3, vol: 0.2 }); tone({ type: 'square', f: 180, f2: 90, dur: 0.2, vol: 0.06 }); },
     // 第三章
+    rewind() { tone({ type: 'sine', f: 300, f2: 1400, dur: 0.25, vol: 0.05 }); tone({ type: 'square', f: 1400, f2: 300, dur: 0.2, vol: 0.02, t: 0.1, filter: 'lowpass', ff: 2200 }); },
     echo() { tone({ type: 'square', f: 1600, f2: 400, dur: 0.16, vol: 0.035, filter: 'bandpass', ff: 1800, q: 3 }); tone({ type: 'sine', f: 880, dur: 0.3, vol: 0.03, t: 0.05, send: 0.6 }); },
     plate() { tone({ type: 'square', f: N(72), dur: 0.05, vol: 0.05 }); tone({ type: 'square', f: N(79), dur: 0.08, vol: 0.04, t: 0.05 }); },
     gateOpen() { [60, 64, 67, 72].forEach((n, i) => tone({ type: 'square', f: N(n + 12), dur: 0.1, vol: 0.045, t: i * 0.06, filter: 'lowpass', ff: 3000 })); noise({ filter: 'highpass', f: 3000, dur: 0.3, vol: 0.08 }); },
@@ -497,6 +498,32 @@ const Sound = (() => {
         if (st === 6 || st === 14) tone({ type: 'sine', f: 62, f2: 48, at, dur: 0.12, vol: 0.09, bus });     // 齿轮闷响
         const motif = { 0: 45, 4: 48, 8: 52, 10: 50, 12: 45 }, k = s % 64; // 低音铜管动机：每 4 小节出现一次
         if (Math.floor(s / 64) % 2 === 1 && motif[k] != null) tone({ type: 'sawtooth', f: N(motif[k]), at, dur: spb * 3.5, vol: 0.03, filter: 'lowpass', ff: 700, bus, send: 0.2 });
+      },
+    },
+    // 赤影：故障数字风——旋律换成轻微走音的方波，每隔一拍留下一段错位的回声（像信号卡顿）；
+    // 加一层故障咔嗒声、每 2 小节一次向下扫的「回溯」音，以及一段先正放、再倒放的镜像动机
+    phantom: {
+      tempo: 1.04,
+      pend: [],
+      tone(o) {
+        o = Object.assign({}, o);
+        if (o.f2 && o.f < 200) { o.dur = Math.min(o.dur, 0.14); o.vol = (o.vol || 0.2) * 0.9; return o; } // 底鼓：更短、更干
+        if (o.type === 'sawtooth') { o.type = 'square'; o.filter = 'lowpass'; o.ff = Math.min(o.ff || 900, 900); o.vol = (o.vol || 0.2) * 0.7; return o; } // 铺底：闷住的方波
+        if (o.f > 300 && (o.type === 'square' || o.type === 'sine' || o.type === 'triangle')) {
+          o.type = 'square'; o.f *= 1.008; if (o.f2) o.f2 *= 1.008; // 轻微走音
+          o.filter = 'lowpass'; o.ff = 2600; o.vol = (o.vol || 0.2) * 0.75;
+          if (o.at != null && STYLES.phantom.pend.length < 4) STYLES.phantom.pend.push(o);
+        }
+        return o;
+      },
+      extra(s, at, bus, spb, name) {
+        const P = STYLES.phantom, pend = P.pend.splice(0);
+        if (s % 2 === 0) for (const o of pend) tone(Object.assign({}, o, { at: o.at + spb * 0.75, vol: (o.vol || 0.2) * 0.3, dur: Math.min(o.dur, spb * 0.5), ff: 1800, bus })); // 错位回声
+        if (QUIET[name]) return;
+        if ((s * 7919) % 13 < 2) noise({ filter: 'bandpass', f: 3200, dur: 0.015, vol: 0.022, at: at + spb * 0.5, bus }); // 故障咔嗒
+        if (s % 32 === 28) tone({ type: 'sine', f: 1800, f2: 180, at, dur: spb * 4, vol: 0.014, bus, send: 0.5 });   // 回溯：向下扫
+        const fwd = [76, 79, 83, 86, 88], k = s % 64; // 镜像动机：第一小节正放，第二小节倒放
+        if (Math.floor(s / 64) % 2 === 1 && k < 20 && k % 2 === 0) { const i = k / 2; const n = i < 5 ? fwd[i] : fwd[9 - i]; tone({ type: 'square', f: N(n), at, dur: 0.1, vol: 0.022, filter: 'lowpass', ff: 3000, bus, send: 0.5 }); }
       },
     },
   };

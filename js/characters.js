@@ -58,8 +58,29 @@ const CHARACTERS = {
     unlockText: '通关第二章「进化育婴室」后解锁',
     unlocked: () => !!(Inventory.p && Inventory.p.ch2Clear),
   },
+  vesper: {
+    id: 'vesper', name: '赤影', en: 'VESPER', model: 'VESPER 镜像残片',
+    color: '#ff4d6d', w: 20, h: 28,
+    pl: {},
+    music: 'phantom', // 背景音乐的演奏风格（见 audio.js 的 STYLES）
+    weapon: 'datablade', draw: 'drawVesper', noDoubleJump: true, noCrouch: true, blink: true, rewind: true,
+    blinkDist: 128,  // 相位闪现距离（约 4 格）
+    rewindT: 2,      // 回溯：回到 2 秒前
+    rewindCd: 4,     // 回溯冷却
+    bio: '第三章那个镜像拉撒路被格式化以后，回收站里还剩下一小段没删干净的残片。它记得拉撒路走过的每一步——然后决定走自己的路。',
+    skills: [
+      ['相位闪现', '冲刺键：朝 8 个方向瞬移约 4 格，途中无敌，能穿过薄墙（穿不过代码门和机关）；空中一次，落地恢复'],
+      ['回溯', '换武器键：回到 2 秒前的位置，冷却 4 秒'],
+      ['数据刃', '专属近战：挥砍很快，挥过的地方会留下一瞬间的残像；破不了盾'],
+      ['残片之躯', '没有二段跳、不能下蹲，不能使用拉撒路的武器'],
+    ],
+    stats: { 机动: 5, 跳跃: 3, 攀爬: 2, 火力: 3 },
+    unlockText: '通关第三章「幽灵因特网」后解锁',
+    unlocked: () => !!(Inventory.p && Inventory.p.ch3Clear),
+  },
 };
-const CHAR_ORDER = ['lazarus', 'scrubber', 'atlas'];
+const CHAR_ORDER = ['lazarus', 'scrubber', 'atlas', 'vesper'];
+const CHAR_ROW = CHAR_ORDER.length > 3 ? 56 : 66; // 角色界面列表每行高度
 function charDef(id) { return CHARACTERS[id] || CHARACTERS.lazarus; }
 // 背景音乐跟着角色换演奏风格
 function applyCharMusic(id) { Sound.setStyle(charDef(id).music || null); }
@@ -70,6 +91,9 @@ WEAPON_INFO.brush = { name: '旋转刷', en: 'BRUSH' };
 // 阿特拉斯的专属武器：液压拳（慢、范围大、能破盾）
 WPN.fist = { melee: true, active: 0.14, cd: 0.42, swing: 0.2, reach: 58, arc: 38 };
 WEAPON_INFO.fist = { name: '液压拳', en: 'FIST' };
+// 赤影的专属武器：数据刃（快、中等距离、破不了盾）
+WPN.datablade = { melee: true, active: 0.09, cd: 0.2, swing: 0.12, reach: 48, arc: 32 };
+WEAPON_INFO.datablade = { name: '数据刃', en: 'DATA BLADE' };
 
 // ============================================================
 //  小扫：贴墙 / 倒挂爬行
@@ -432,5 +456,124 @@ Object.assign(Game, {
       this.particles.burst(pr.x, pr.y, 8, { color: ['#ffd070', '#fff'], shape: 'spark', smin: 80, smax: 240, lmin: 0.12, lmax: 0.25, add: true });
       if (!this.shieldHinted) { this.shieldHinted = true; this.toastHint('臂盾挡下了正面飞来的攻击——只在站在地上时有效'); }
     }
+  },
+});
+
+// ============================================================
+//  赤影：相位闪现、回溯、数据刃
+// ============================================================
+Object.assign(Player.prototype, {
+  // 某个位置能不能站：在世界里、不碰实心瓦片 / 尖刺 / 实体机关（代码门、升降台等）
+  spotFree(W, x, y) {
+    if (x < 0 || y < -this.h || x + this.w > W.pw || y + this.h > W.ph) return false;
+    if (!this.boxFree(W, x, y)) return false;
+    const b = { x, y, w: this.w, h: this.h };
+    for (const s of W.solids) if (s.active && !s.oneWay && s.owner !== this && overlap(b, s)) return false;
+    return true;
+  },
+  // 相位闪现：沿方向瞬移，能穿过不超过 1 格厚的瓦片墙，碰到实体机关就停在它前面
+  vesperBlink(g, I, ctl) {
+    if (this.dashLock > 0) { Sound.sfx.denied(); g.hudDeny = 0.6; Input.rumble(0.3, 0, 120); return; }
+    if (!this.canDash || this.dashCd > 0) return;
+    const W = g.world, gd = this.gd || 1;
+    let dx = (I.down('right') ? 1 : 0) - (I.down('left') ? 1 : 0), dy = (I.down('down') ? 1 : 0) - (I.down('up') ? 1 : 0);
+    if (this.onGround && dy > 0) dy = 0;
+    if (!dx && !dy) dx = this.facing;
+    const l = Math.hypot(dx, dy), ux = dx / l, uy = dy / l * gd; // uy 换成世界坐标（重力反转时 ↑ 指向自己的头顶）
+    const D = this.C.blinkDist, step = 4, x0 = this.x, y0 = this.y;
+    let best = null, wall = 0, walls = 0, inWall = false;
+    for (let d = step; d <= D; d += step) {
+      const x = x0 + ux * d, y = y0 + uy * d, b = { x, y, w: this.w, h: this.h };
+      let objHit = false;
+      for (const s of W.solids) if (s.active && !s.oneWay && overlap(b, s)) { objHit = true; break; }
+      if (objHit) break; // 代码门、升降台、坍塌石板等：穿不过
+      if (!this.boxFree(W, x, y)) { if (!inWall) { inWall = true; walls++; wall = 0; } wall += step; if (walls > 1 || wall > TILE * 1.5 + Math.max(this.w, this.h)) break; continue; }
+      inWall = false;
+      if (this.spotFree(W, x, y)) best = { x, y };
+    }
+    this.dashCd = 0.3; this.canDash = false;
+    if (!best) { Sound.sfx.denied(); return; }
+    const from = { x: this.cx, y: this.cy };
+    if (g.matrix) g.matrix.spawnEcho(this, g); // 第三章：残影留在闪现起点
+    this.x = best.x; this.y = best.y; this.vx = ux * 220; this.vy = uy * gd < 0 ? -120 : 0; // vy 此时是本地坐标（朝脚下为正）
+    this.invulnT = 0.15; this.jumping = false; this.blinkFx = { x: from.x, y: from.y, t: 0 };
+    if (dx) this.facing = Math.sign(dx);
+    ctl.dashed = true; ctl.dashDir = { x: ux, y: uy * gd };
+    Sound.sfx.echo ? Sound.sfx.echo() : Sound.sfx.dash(); g.shake(2); Input.rumble(0.05, 0.4, 60);
+    for (let i = 0; i <= 8; i++) { const k = i / 8; g.particles.add({ x: lerp(from.x, this.cx, k) + rand(-4, 4), y: lerp(from.y, this.cy, k) + rand(-6, 6), vx: rand(-20, 20), vy: rand(-20, 20), life: rand(0.2, 0.4), size: rand(2, 4), color: Math.random() < 0.5 ? '#ff4d6d' : '#ffc0cc', add: true }); }
+  },
+  // 回溯：记录最近的位置，按换武器键回到 2 秒前
+  vesperTrack(dt, g) {
+    this.rewindCd = Math.max(0, (this.rewindCd || 0) - dt);
+    if (this.invulnT > 0) this.invulnT -= dt;
+    if (this.blinkFx) { this.blinkFx.t += dt; if (this.blinkFx.t > 0.25) this.blinkFx = null; }
+    const H = this.hist || (this.hist = []);
+    H.push({ x: this.x, y: this.y, t: g.t, f: this.facing });
+    while (H.length && H[0].t < g.t - this.C.rewindT - 0.1) H.shift();
+  },
+  vesperRewind(g) {
+    if ((this.rewindCd || 0) > 0 || !this.hist || !this.hist.length) { Sound.sfx.denied(); return; }
+    const W = g.world, target = g.t - this.C.rewindT;
+    let pick = null;
+    for (const h of this.hist) { if (h.t <= target + 0.02 && this.spotFree(W, h.x, h.y)) pick = h; }
+    if (!pick) pick = this.hist.find((h) => this.spotFree(W, h.x, h.y));
+    if (!pick) { Sound.sfx.denied(); return; }
+    const from = { x: this.cx, y: this.cy };
+    this.x = pick.x; this.y = pick.y; this.facing = pick.f; this.vx = 0; this.vy = 0; this.dashT = 0; this.jumping = false;
+    this.rewindCd = this.C.rewindCd; this.invulnT = 0.25; this.hist = []; this.canDash = true;
+    Sound.sfx.rewind ? Sound.sfx.rewind() : Sound.sfx.respawn(); g.flash(0.2, '#ff4d6d'); Input.rumble(0.2, 0.3, 120);
+    for (let i = 0; i <= 12; i++) { const k = i / 12; g.particles.add({ x: lerp(from.x, this.cx, k), y: lerp(from.y, this.cy, k), vx: 0, vy: rand(-30, 30), life: rand(0.3, 0.6), size: 3, color: '#ff4d6d', add: true }); }
+    if (!g.rewindHinted) { g.rewindHinted = true; g.toastHint('回溯：回到了 2 秒前的位置（冷却 4 秒）'); }
+  },
+  // 赤影：半透明的红色数字人，兜帽，像素边缘会抖动
+  drawVesper(ctx, x, y, facing, sx, sy, g, tint) {
+    const t = g.t;
+    ctx.save();
+    ctx.translate(Math.round(x + this.w / 2), Math.round(y + this.h));
+    ctx.scale(facing * sx, sy);
+    const c = tint ? { a: tint, b: tint, d: tint, e: tint } : { a: '#c81e3c', b: '#ff4d6d', d: '#4a0a18', e: '#ffd0da' };
+    if (!tint) ctx.globalAlpha *= 0.88;
+    const air = !this.onGround, moving = !air && Math.abs(this.vx) > 20, ph = this.run;
+    // 腿（细长，像数据流）
+    let l1 = -5, l2 = 1;
+    if (moving) { l1 += Math.sin(ph) * 4; l2 -= Math.sin(ph) * 4; } else if (air) { l1 = -6; l2 = 2; }
+    ctx.fillStyle = c.a; ctx.fillRect(l1, -11, 4, 11); ctx.fillRect(l2, -11, 4, 11);
+    // 身体 + 长斗篷（下摆是碎开的像素）
+    ctx.fillStyle = c.d; ctx.fillRect(-8, -23, 16, 13);
+    ctx.fillStyle = c.a; ctx.fillRect(-8, -23, 16, 3);
+    for (let i = 0; i < 5; i++) { const px = -10 + i * 4, len = 3 + ((i * 7 + Math.floor(t * 8)) % 4); ctx.fillStyle = i % 2 ? c.a : c.d; ctx.fillRect(px, -12, 3, len); }
+    // 兜帽 + 发光的眼睛
+    ctx.fillStyle = c.a; ctx.beginPath(); ctx.moveTo(-7, -23); ctx.lineTo(-5, -34); ctx.lineTo(4, -35); ctx.lineTo(8, -27); ctx.lineTo(7, -22); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = c.d; ctx.fillRect(-1, -31, 8, 6);
+    ctx.fillStyle = c.e; ctx.fillRect(2, -29, 3, 2);
+    if (!tint) {
+      ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = 'rgba(255,80,110,0.4)'; ctx.fillRect(0, -31, 7, 5); ctx.globalCompositeOperation = 'source-over';
+      // 抖动的像素边缘（故障切片）
+      if (Math.random() < 0.3) { const sy2 = -34 + Math.floor(Math.random() * 30); ctx.fillStyle = c.b; ctx.fillRect(-9 + rand(-3, 3), sy2, 18, 2); }
+      ctx.fillStyle = 'rgba(255,77,109,0.6)'; for (let i = 0; i < 3; i++) ctx.fillRect(rand(-10, 9), rand(-34, -2), 1.5, 1.5);
+    }
+    // 手臂 + 数据刃（未攻击时握在身侧，刃身是一道红光）
+    ctx.fillStyle = c.a; ctx.fillRect(2, -20, 3, 8);
+    if (!tint && !(this.atkSwing > 0)) { ctx.fillStyle = 'rgba(255,90,120,0.8)'; ctx.fillRect(4, -14, 2, 12); }
+    ctx.restore();
+    // 闪现的轨迹残像
+    if (!tint && this.blinkFx) {
+      const k = 1 - this.blinkFx.t / 0.25;
+      ctx.save(); ctx.globalAlpha = 0.5 * k; ctx.strokeStyle = '#ff4d6d'; ctx.lineWidth = 3; ctx.setLineDash([6, 4]);
+      ctx.beginPath(); ctx.moveTo(this.blinkFx.x, this.blinkFx.y); ctx.lineTo(this.cx, this.cy); ctx.stroke(); ctx.restore();
+    }
+  },
+  // 数据刃的挥砍：红色刀光 + 碎开的像素
+  drawDataSwing(ctx, g) {
+    const k = 1 - this.atkSwing / (this.atkSwingMax || 0.12), cx = this.cx, cy = this.y + this.h - this.K.H / 2;
+    ctx.save(); ctx.translate(cx, cy);
+    if (this.atkDown) ctx.rotate(Math.PI / 2); else { ctx.scale(this.facing, 1); if (this.atkUp) ctx.rotate(-Math.PI / 2); }
+    const a0 = -1.3 + k * 0.4, a1 = a0 + 2.4 * Math.min(1, k * 2.2);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = `rgba(255,70,100,${0.8 * (1 - k)})`; ctx.lineWidth = 9; ctx.lineCap = 'butt';
+    ctx.beginPath(); ctx.arc(6, 0, 32, a0, a1); ctx.stroke();
+    ctx.fillStyle = `rgba(255,200,210,${1 - k})`;
+    for (let i = 0; i < 6; i++) { const a = lerp(a0, a1, i / 5); ctx.fillRect(6 + Math.cos(a) * (34 + rand(-3, 6)), Math.sin(a) * (34 + rand(-3, 6)), 3, 3); }
+    ctx.restore();
   },
 });
