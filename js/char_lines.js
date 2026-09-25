@@ -8,6 +8,7 @@
 // ============================================================
 const CHAR_TEXT = {
   scrubber: {
+    subsEn: [['MIRROR LAZARUS', 'MIRROR SCRUBBER'], ['Mirror Lazarus', 'Mirror Scrubber'], ['Specimen LZ-01', 'Specimen SC-7'], ['LZ-01', 'SC-7'], ['Lazarus', 'Scrubber'], ['exoskeleton', 'chassis']],
     subs: [['MIRROR LAZARUS', 'MIRROR SCRUBBER'], ['镜像拉撒路', '镜像小扫'], ['样本 LZ-01', '样本 SC-7'], ['LZ-01', 'SC-7'], ['拉撒路', '小扫'], ['用刀', '用刷子'], ['外骨骼', '机体']],
     lines: {
       // ---- 第一章 ----
@@ -70,10 +71,22 @@ const CHAR_TEXT = {
   },
 };
 
-// 当前周目角色的文本。story = true：开场 / 结局剧情、芯片档案（只做整句改写）
+// 当前周目角色、当前语言的文本。story = true：开场 / 结局剧情、芯片档案（只做整句改写）
+// 英文：整句改写的结果再查英文词典；其余先翻译，再做英文的称呼替换（subsEn）
 function charText(s, story) {
   if (typeof s !== 'string') return s;
   const T = CHAR_TEXT[typeof Game !== 'undefined' && Game.charId];
+  if (I18N.en) {
+    if (T && Object.prototype.hasOwnProperty.call(T.lines, s)) return tr(T.lines[s]);
+    let out = tr(s);
+    if (T && !story && T.subsEn) {
+      const KEEP = '\u0001';
+      out = out.split('Lazarus Protocol').join(KEEP);
+      for (const [a, b] of T.subsEn) out = out.split(a).join(b);
+      out = out.split(KEEP).join('Lazarus Protocol');
+    }
+    return out;
+  }
   if (!T) return s;
   if (Object.prototype.hasOwnProperty.call(T.lines, s)) return T.lines[s];
   if (story) return s;

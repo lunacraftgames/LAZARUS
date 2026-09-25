@@ -41,19 +41,19 @@ Object.assign(Game, {
     drawBackground(ctx, { x: this.t * 8, y: 0 }, THEMES.gallery, this.t);
     ctx.fillStyle = 'rgba(0,0,0,0.75)'; ctx.fillRect(0, 0, VW, VH);
     ctx.fillStyle = '#f2ead6'; ctx.font = 'bold 26px ' + FONT; ctx.fillText('声音设置', 60, 60);
-    ctx.fillStyle = 'rgba(200,190,160,0.6)'; ctx.font = '12px ' + MONO; ctx.fillText('AUDIO', 172, 60);
+    ctx.fillStyle = 'rgba(200,190,160,0.6)'; ctx.font = '12px ' + MONO; if (!I18N.en) ctx.fillText('AUDIO', 172, 60);
     AUDIO_ROWS.forEach((R, i) => {
       const y = 130 + i * 62, sel = i === this.audRow;
       if (sel) { ctx.fillStyle = 'rgba(120,255,230,0.07)'; ctx.fillRect(56, y - 26, VW - 112, 48); ctx.fillStyle = '#7ff'; ctx.fillRect(56, y - 26, 3, 48); }
       ctx.fillStyle = sel ? '#fff' : 'rgba(230,230,220,0.8)'; ctx.font = (sel ? 'bold ' : '') + '18px ' + FONT;
       if (!R.k) {
-        const label = R.type === 'mute' ? `静音：${Sound.muted ? '开' : '关'}` : R.n;
+        const label = R.type === 'mute' ? tr('静音：%{v}', { v: tr(Sound.muted ? '开' : '关') }) : R.n;
         ctx.fillText((sel ? '▶ ' : '') + label, 80, y + 6);
         this.addHot(56, y - 26, 420, 48, () => { this.audRow = i; this.activateAudioRow(i); }, () => { this.audRow = i; });
         return;
       }
       ctx.fillText(R.n, 80, y + 6);
-      ctx.fillStyle = 'rgba(200,190,160,0.55)'; ctx.font = '11px ' + MONO; ctx.fillText(R.en, 170, y + 6);
+      ctx.fillStyle = 'rgba(200,190,160,0.55)'; ctx.font = '11px ' + MONO; if (!I18N.en) ctx.fillText(R.en, 170, y + 6);
       const v = Sound.volumes[R.k], dim = Sound.muted && R.k !== 'music' && R.k !== 'sfx' ? 0.4 : 1;
       const { x, w } = AUD_BAR;
       // 滑槽 + 刻度

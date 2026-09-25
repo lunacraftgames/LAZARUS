@@ -53,12 +53,12 @@ Object.assign(Game, {
     drawBackground(ctx, { x: this.t * 8, y: 0 }, THEMES.gallery, this.t);
     ctx.fillStyle = 'rgba(0,0,0,0.72)'; ctx.fillRect(0, 0, VW, VH);
     ctx.fillStyle = '#f2ead6'; ctx.font = 'bold 26px ' + FONT; ctx.fillText('仓库', 24, 48);
-    ctx.fillStyle = 'rgba(200,190,160,0.6)'; ctx.font = '12px ' + MONO; ctx.fillText('INVENTORY', 86, 48);
+    ctx.fillStyle = 'rgba(200,190,160,0.6)'; ctx.font = '12px ' + MONO; if (!I18N.en) ctx.fillText('INVENTORY', 86, 48); // 英文模式下标题本身就是英文，不再重复
     ctx.textAlign = 'right'; ctx.font = '11px ' + FONT;
     ctx.fillStyle = Inventory.backend.name === 'steam' ? '#8fe' : 'rgba(255,200,120,0.75)';
     ctx.fillText(Inventory.backend.name === 'steam' ? '已连接 Steam 库存' : '本地模拟库存 · 正式版将与 Steam 库存同步', VW - 24, 30);
     const tradable = Inventory.p.items.filter((i) => DEF_BY_ID[i.def] && DEF_BY_ID[i.def].tradable).length;
-    ctx.fillStyle = 'rgba(200,200,200,0.6)'; ctx.fillText(`可交易物品 ${tradable} 件 · 累计游玩 ${Math.floor(Inventory.p.playtime / 60)} 分钟`, VW - 24, 48);
+    ctx.fillStyle = 'rgba(200,200,200,0.6)'; ctx.fillText(tr('可交易物品 %{n} 件 · 累计游玩 %{m} 分钟', { n: tradable, m: Math.floor(Inventory.p.playtime / 60) }), VW - 24, 48);
     ctx.textAlign = 'left';
     // 标签页
     SLOTS.forEach((sl, i) => {
@@ -66,7 +66,7 @@ Object.assign(Game, {
       ctx.fillStyle = sel ? 'rgba(120,255,230,0.14)' : 'rgba(255,255,255,0.03)'; ctx.fillRect(24, y, 170, 38);
       if (sel) { ctx.fillStyle = '#7ff'; ctx.fillRect(24, y, 3, 38); }
       ctx.fillStyle = sel ? '#e8fff8' : 'rgba(220,220,210,0.6)'; ctx.font = (sel ? 'bold ' : '') + '14px ' + FONT; ctx.fillText(sl.name, 38, y + 18);
-      ctx.fillStyle = 'rgba(200,200,200,0.4)'; ctx.font = '9px ' + MONO; ctx.fillText(sl.en, 38, y + 31);
+      ctx.fillStyle = 'rgba(200,200,200,0.4)'; ctx.font = '9px ' + MONO; if (!I18N.en) ctx.fillText(sl.en, 38, y + 31);
       this.addHot(24, y, 170, 38, () => { if (this.invTab !== i) { this.invTab = i; this.invSel = 0; Sound.sfx.select(); } });
       const hasNew = ITEMDEFS.some((d) => d.slot === sl.key && Inventory.isNew(d.id));
       if (hasNew) { ctx.fillStyle = '#fc6'; ctx.beginPath(); ctx.arc(182, y + 19, 4, 0, 7); ctx.fill(); }
@@ -136,10 +136,10 @@ Object.assign(Game, {
     ctx.restore(); ctx.globalAlpha = 1;
     ctx.fillStyle = own ? r.color : '#888'; ctx.font = 'bold 20px ' + FONT; ctx.fillText(own ? d.name : '？？？', dx, 292);
     ctx.font = '11px ' + FONT; ctx.fillStyle = 'rgba(220,220,210,0.7)';
-    ctx.fillText(`${r.name} · ${SLOTS[this.invTab].name}` + (own && d.tradable ? ` · 持有 ×${Inventory.count(d.id)}` : ''), dx, 312);
+    ctx.fillText(`${tr(r.name)} · ${tr(SLOTS[this.invTab].name)}` + (own && d.tradable ? tr(' · 持有 ×%{n}', { n: Inventory.count(d.id) }) : ''), dx, 312);
     ctx.font = '13px ' + FONT; ctx.fillStyle = '#e6dcc0';
     const where = d.desc && d.desc.match(/【(.+?)】/);
-    const desc = own ? d.desc : (d.tradable ? '尚未获得。可通过 Boss 掉落、零重构通关、游玩时长掉落获得，或在 Steam 市场与其他玩家交易。' : `尚未获得。获得地点：${where ? where[1] : '后续关卡'}。`);
+    const desc = own ? d.desc : (d.tradable ? '尚未获得。可通过 Boss 掉落、零重构通关、游玩时长掉落获得，或在 Steam 市场与其他玩家交易。' : tr('尚未获得。获得地点：%{w}。', { w: tr(where ? where[1] : '后续关卡') }));
     wrapText(ctx, desc, dw).slice(0, 5).forEach((l, i) => ctx.fillText(l, dx, 338 + i * 20));
     // 交易属性徽章
     const by = 450;
@@ -147,11 +147,12 @@ Object.assign(Game, {
     ctx.fillStyle = d.tradable ? '#fc6' : '#7ff'; ctx.font = 'bold 12px ' + FONT;
     ctx.fillText(d.tradable ? '⇄ 可交易 · 可上架 Steam 社区市场' : '🔒 账号绑定 · 不可交易 · 不可上架市场', dx + 10, by + 20);
     if (own && d.weapon) {
-      if (Inventory.weapon() === d.key) { ctx.fillStyle = '#7ff'; ctx.font = '12px ' + FONT; ctx.fillText('✔ 当前武器（游戏中按 ' + Input.glyph('swap') + ' 切换）', dx, by + 50); }
+      if (Inventory.weapon() === d.key) { ctx.fillStyle = '#7ff'; ctx.font = '12px ' + FONT; ctx.fillText(tr('✔ 当前武器（游戏中按 %{k} 切换）', { k: Input.glyph('swap') }), dx, by + 50); }
       else {
-        ctx.fillStyle = 'rgba(120,255,230,0.12)'; ctx.fillRect(dx, by + 36, 170, 26); ctx.strokeStyle = 'rgba(120,255,230,0.5)'; ctx.strokeRect(dx + 0.5, by + 36.5, 169, 25);
+        ctx.font = '12px ' + FONT; const bw = Math.max(170, ctx.measureText(tr('设为当前武器')).width + 70); // 按钮宽度跟着文字走（英文更长）
+        ctx.fillStyle = 'rgba(120,255,230,0.12)'; ctx.fillRect(dx, by + 36, bw, 26); ctx.strokeStyle = 'rgba(120,255,230,0.5)'; ctx.strokeRect(dx + 0.5, by + 36.5, bw - 1, 25);
         drawHintLine(ctx, dx + 8, by + 54, [{ k: 'confirm' }, '设为当前武器'], { color: 'rgba(220,240,235,0.9)' });
-        this.addHot(dx, by + 36, 170, 26, () => this.equipItem(d));
+        this.addHot(dx, by + 36, bw, 26, () => this.equipItem(d));
       }
     }
     if (own && d.slot !== 'ability' && d.slot !== 'exhibit') {
@@ -159,9 +160,10 @@ Object.assign(Game, {
       ctx.fillStyle = eq ? '#7ff' : 'rgba(220,220,210,0.8)'; ctx.font = '12px ' + FONT;
       if (eq) ctx.fillText('✔ 当前已装备', dx, by + 50);
       else {
-        ctx.fillStyle = 'rgba(120,255,230,0.12)'; ctx.fillRect(dx, by + 36, 150, 26); ctx.strokeStyle = 'rgba(120,255,230,0.5)'; ctx.strokeRect(dx + 0.5, by + 36.5, 149, 25);
+        ctx.font = '12px ' + FONT; const bw = Math.max(150, ctx.measureText(tr('装备 / 点击装备')).width + 70);
+        ctx.fillStyle = 'rgba(120,255,230,0.12)'; ctx.fillRect(dx, by + 36, bw, 26); ctx.strokeStyle = 'rgba(120,255,230,0.5)'; ctx.strokeRect(dx + 0.5, by + 36.5, bw - 1, 25);
         drawHintLine(ctx, dx + 8, by + 54, [{ k: 'confirm' }, '装备 / 点击装备'], { color: 'rgba(220,240,235,0.9)' });
-        this.addHot(dx, by + 36, 150, 26, () => this.equipItem(d));
+        this.addHot(dx, by + 36, bw, 26, () => this.equipItem(d));
       }
     }
     ctx.fillStyle = 'rgba(200,200,200,0.5)'; ctx.font = '12px ' + FONT;
@@ -193,23 +195,23 @@ Object.assign(Game, {
     drawBackground(ctx, { x: this.t * 10, y: 0 }, CHAPTERS[ch].theme || THEMES.hall, this.t);
     ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(0, 0, VW, VH);
     ctx.fillStyle = '#f2ead6'; ctx.font = 'bold 28px ' + FONT; ctx.fillText('章节选择', 70, 72);
-    // 章节标签
-    let tx = 210;
+    // 章节标签（从标题右边开始；英文的章节名太长，标签上只写「Chapter N」，名字写在下面的说明行里）
+    let tx = Math.max(210, 70 + ctx.measureText('章节选择').width + 24);
     for (let c = 1; CHAPTERS[c]; c++) {
-      const open = chs.includes(c), sel = c === ch, label = `${CH_NUM[c]} ${CHAPTERS[c].name}`;
+      const open = chs.includes(c), sel = c === ch, label = I18N.en ? tr(CH_NUM[c]) : `${tr(CH_NUM[c])} ${tr(CHAPTERS[c].name)}`;
       ctx.font = (sel ? 'bold ' : '') + '15px ' + FONT; const w = ctx.measureText(label).width + 28;
       ctx.fillStyle = sel ? 'rgba(120,255,230,0.16)' : 'rgba(255,255,255,0.05)'; ctx.fillRect(tx, 50, w, 30);
       if (sel) { ctx.fillStyle = '#7ff'; ctx.fillRect(tx, 78, w, 2); }
       ctx.fillStyle = !open ? 'rgba(160,160,160,0.4)' : sel ? '#e8fff8' : 'rgba(220,220,210,0.7)';
-      ctx.fillText(open ? label : `${CH_NUM[c]} 🔒`, tx + 14, 70);
+      ctx.fillText(open ? label : `${tr(CH_NUM[c])} 🔒`, tx + 14, 70);
       if (open) this.addHot(tx, 50, w, 30, () => this.setSelCh(c));
       tx += w + 8;
     }
     ctx.fillStyle = 'rgba(255,210,120,0.8)'; ctx.font = '13px ' + FONT;
-    ctx.fillText('重玩时可使用所有已解锁的武器与能力。零重构通关可获得额外掉落。', 70, 110);
+    ctx.fillText((I18N.en ? tr(CHAPTERS[ch].name) + ' — ' : '') + tr('重玩时可使用所有已解锁的武器与能力。零重构通关可获得额外掉落。'), 70, 110);
     const rw = ITEMDEFS.find((d) => d.chipReward === ch), cg = this.chipLogIn(ch), ct = chipTotal(ch);
     ctx.fillStyle = cg >= ct ? '#7f9' : 'rgba(255,210,120,0.8)';
-    ctx.fillText(`本章记忆芯片收藏 ${cg} / ${ct}` + (rw ? (cg >= ct ? ` · 已获得专属外观「${rw.name}」` : ` · 集齐奖励：专属外观「${rw.name}」`) : '') + (Inventory.p.hiddenEnd ? ' · 隐藏结局已解锁' : ' · 四章全部集齐解锁隐藏结局'), 70, 130);
+    ctx.fillText(tr('本章记忆芯片收藏 %{a} / %{b}', { a: cg, b: ct }) + (rw ? tr(cg >= ct ? ' · 已获得专属外观「%{name}」' : ' · 集齐奖励：专属外观「%{name}」', { name: tr(rw.name) }) : '') + tr(Inventory.p.hiddenEnd ? ' · 隐藏结局已解锁' : ' · 四章全部集齐解锁隐藏结局'), 70, 130);
     const list = this.selList(), half = Math.ceil(list.length / 2);
     list.forEach(({ L, i }, k) => {
       const col = k < half ? 0 : 1, row = k % half;
@@ -219,7 +221,7 @@ Object.assign(Game, {
       this.addHot(x, y, w, 52, () => { Sound.sfx.confirm(); this.startLevel(i); }, () => { this.selSel = k; });
       ctx.fillStyle = sel ? '#7ff' : '#c9b88a'; ctx.font = 'bold 16px ' + MONO; ctx.fillText(L.id, x + 18, y + 32);
       ctx.fillStyle = sel ? '#fff' : 'rgba(230,230,220,0.75)'; ctx.font = (sel ? 'bold ' : '') + '18px ' + FONT; ctx.fillText(L.name, x + 78, y + 26);
-      ctx.fillStyle = 'rgba(200,190,160,0.55)'; ctx.font = '11px ' + MONO; ctx.fillText(L.en, x + 78, y + 43);
+      ctx.fillStyle = 'rgba(200,190,160,0.55)'; ctx.font = '11px ' + MONO; if (!I18N.en) ctx.fillText(L.en, x + 78, y + 43);
       if (L._chips == null) { const B = makeBuilder(L.w, L.h); L.build(B); L._chips = B.grid.flat().filter((c) => c === 'o').length; }
       const got = Object.keys(Inventory.p.chipLog).filter((c) => c.startsWith(L.id + '#') && chipValid(c)).length; // 显示跨周目累计的收藏进度，方便补齐
       ctx.textAlign = 'right'; ctx.font = '12px ' + FONT;

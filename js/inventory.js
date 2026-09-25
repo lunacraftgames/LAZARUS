@@ -102,7 +102,10 @@ function generatorBundle(gen) {
 }
 
 // 导出为 Steamworks 可上传的 itemdef JSON
-function toSteamSchema(appid) {
+// en：英文词典（网页里是 I18N.EN；导出工具会单独传入）
+function toSteamSchema(appid, en) {
+  en = en || (typeof I18N !== 'undefined' ? I18N.EN : {});
+  const E = (s) => en[s] || s;
   const hex = (c) => { c = c.replace('#', ''); if (c.length === 3) c = c.split('').map((x) => x + x).join(''); return c.toUpperCase(); };
   const items = [];
   for (const d of ITEMDEFS) {
@@ -110,8 +113,8 @@ function toSteamSchema(appid) {
     const slot = SLOTS.find((s) => s.key === d.slot);
     items.push({
       itemdefid: d.id, type: 'item',
-      name: d.name, name_schinese: d.name, description: d.desc, description_schinese: d.desc,
-      display_type: slot.name, display_type_english: slot.en,
+      name: E(d.name), name_english: E(d.name), name_schinese: d.name, description: E(d.desc), description_english: E(d.desc), description_schinese: d.desc,
+      display_type: E(slot.name), display_type_english: E(slot.name), display_type_schinese: slot.name,
       name_color: hex(RARITY[d.rarity].color), background_color: '1B1D1F',
       icon_url: `https://YOUR-CDN/lazarus/icons/${d.id}.png`, icon_url_large: `https://YOUR-CDN/lazarus/icons/${d.id}_large.png`,
       tradable: true, marketable: true,
@@ -120,7 +123,7 @@ function toSteamSchema(appid) {
   }
   for (const g of GENERATORS) {
     const it = {
-      itemdefid: g.id, type: g.type, name: g.name, description: g.desc, hidden: true,
+      itemdefid: g.id, type: g.type, name: E(g.name), name_schinese: g.name, description: E(g.desc), description_schinese: g.desc, hidden: true,
       bundle: generatorBundle(g).map((b) => `${b.id}x${b.w}`).join(';'),
     };
     if (g.type === 'playtimegenerator') Object.assign(it, { drop_interval: g.dropInterval, use_drop_window: true, drop_window: 1440, drop_max_per_window: 2 });
