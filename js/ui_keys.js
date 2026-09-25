@@ -6,7 +6,7 @@ const KEY_ROWS = [
   { a: 'left', n: '向左' },
   { a: 'right', n: '向右' },
   { a: 'up', n: '向上瞄准' },
-  { a: 'down', n: '向下 / 下落 / 下劈' },
+  { a: 'down', n: '下蹲 / 下落 / 下劈' },
   { a: 'jump', n: '跳跃', pad: true },
   { a: 'dash', n: '冲刺', pad: true },
   { a: 'attack', n: '攻击', pad: true },
