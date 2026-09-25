@@ -545,6 +545,7 @@ const Game = {
   updateCamera(dt, snap) {
     const p = this.player, w = this.world, c = this.cam;
     let tx = p.cx - VW / 2 + p.facing * 50, ty = p.cy - VH * 0.55;
+    if (p.lookT > 0.35) ty -= 120 * (p.gd || 1); // 站着按住「向上瞄准」：镜头往上看
     tx = clamp(tx, 0, Math.max(0, w.pw - VW)); ty = clamp(ty, 0, Math.max(0, w.ph - VH));
     if (snap) { c.x = tx; c.y = ty; }
     else { c.x += (tx - c.x) * Math.min(1, dt * 5); c.y += (ty - c.y) * Math.min(1, dt * 6); }

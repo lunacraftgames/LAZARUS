@@ -5,7 +5,7 @@
 const KEY_ROWS = [
   { a: 'left', n: '向左' },
   { a: 'right', n: '向右' },
-  { a: 'up', n: '向上（冲刺方向）' },
+  { a: 'up', n: '向上瞄准' },
   { a: 'down', n: '向下 / 下落 / 下劈' },
   { a: 'jump', n: '跳跃', pad: true },
   { a: 'dash', n: '冲刺', pad: true },
@@ -18,7 +18,7 @@ const KEY_ROWS = [
   { type: 'reset', n: '恢复默认键位' },
   { type: 'back', n: '返回' },
 ];
-const KEY_ACTION_NAMES = { left: '向左', right: '向右', up: '向上', down: '向下', jump: '跳跃', dash: '冲刺', attack: '攻击', swap: '切换武器', inv: '仓库', restart: '自毁重构', mute: '静音' };
+const KEY_ACTION_NAMES = { left: '向左', right: '向右', up: '向上瞄准', down: '向下', jump: '跳跃', dash: '冲刺', attack: '攻击', swap: '切换武器', inv: '仓库', restart: '自毁重构', mute: '静音' };
 const KCOL_X = [290, 420, 550, 690], KCOL_W = [120, 120, 120, 200];
 
 Object.assign(Game, {
