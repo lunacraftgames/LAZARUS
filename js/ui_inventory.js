@@ -102,36 +102,44 @@ Object.assign(Game, {
     ctx.globalAlpha = 0.25; g.addColorStop(0, own ? r.color : 'rgb(80,80,80)'); g.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = g; ctx.fillRect(dx, 80, dw, 180); ctx.globalAlpha = 1;
     ctx.save(); ctx.beginPath(); ctx.rect(dx, 80, dw, 180); ctx.clip();
-    if (!own) ctx.globalAlpha = 0.35;
-    if (d.slot === 'paint' || d.slot === 'trail' || d.slot === 'blade') {
-      Inventory.preview = { slot: d.slot, id: d.id, weapon: d.slot === 'blade' ? 'sabre' : null };
-      const abil = Inventory.p.abilities.sabre;
-      if (d.slot === 'blade') Inventory.p.abilities.sabre = true;
-      this.drawMannequin(ctx, dx + dw / 2 + (d.slot === 'trail' ? 30 : d.slot === 'blade' ? -30 : 0), 244, 4, { trail: d.slot === 'trail', slash: d.slot === 'blade' && Math.floor(this.t * 1.2) % 2 === 0 });
-      Inventory.p.abilities.sabre = abil;
-      Inventory.preview = null;
-    } else if (d.slot === 'rebuild') {
-      ctx.textAlign = 'center';
-      if (d.omega) { ctx.fillStyle = 'rgba(255,40,40,0.15)'; ctx.font = 'bold 160px ' + MONO; ctx.fillText('Ω', dx + dw / 2, 230); }
-      ctx.fillStyle = d.color; ctx.font = 'bold 18px ' + MONO; ctx.fillText(d.title, dx + dw / 2 + rand(-1, 1), 150);
-      ctx.font = '11px ' + FONT; ctx.fillText(d.sub, dx + dw / 2, 174);
-      ctx.strokeStyle = d.color; ctx.strokeRect(dx + 53, 188, 200, 10);
-      ctx.fillRect(dx + 55, 190, 196 * ((this.t * 0.7) % 1), 6);
-      ctx.textAlign = 'left';
-    } else if (d.slot === 'ability') {
-      if (!ItemArt.draw(ctx, d.key, dx + dw / 2, 160, this.t, own)) {
-        ctx.textAlign = 'center'; ctx.fillStyle = own ? '#fc6' : '#666'; ctx.font = 'bold 60px ' + FONT;
-        ctx.fillText('⚔', dx + dw / 2, 195); ctx.textAlign = 'left';
-      }
-    } else {
+    if (!own && d.slot !== 'ability') {
+      // 外观类未获得：不显示预览，只画一个锁住的问号（能力 / 武器仍然显示剪影）
       const cx = dx + dw / 2, cy = 170;
-      ctx.fillStyle = '#3a3226'; ctx.fillRect(cx - 50, cy + 30, 100, 16);
-      ctx.fillStyle = 'rgba(150,220,235,0.15)'; ctx.fillRect(cx - 44, cy - 50, 88, 80);
-      ctx.strokeStyle = '#bfe8f0'; ctx.strokeRect(cx - 44, cy - 50, 88, 80);
-      ctx.save(); ctx.translate(cx, cy - 10); ctx.rotate(Math.sin(this.t) * 0.2);
-      ctx.fillStyle = d.icon; ctx.beginPath(); for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; ctx.lineTo(Math.cos(a) * 20, Math.sin(a) * 20); } ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.fillRect(-8, -10, 6, 4);
-      ctx.restore();
+      ctx.strokeStyle = 'rgba(160,160,160,0.25)'; ctx.setLineDash([6, 6]); ctx.strokeRect(cx - 60, cy - 60, 120, 120); ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(160,160,160,0.35)'; ctx.font = 'bold 72px ' + FONT; ctx.textAlign = 'center'; ctx.fillText('?', cx, cy + 24);
+      ctx.font = '14px ' + FONT; ctx.fillText('🔒', cx + 44, cy + 50); ctx.textAlign = 'left';
+    } else {
+      if (!own) ctx.globalAlpha = 0.35;
+      if (d.slot === 'paint' || d.slot === 'trail' || d.slot === 'blade') {
+        Inventory.preview = { slot: d.slot, id: d.id, weapon: d.slot === 'blade' ? 'sabre' : null };
+        const abil = Inventory.p.abilities.sabre;
+        if (d.slot === 'blade') Inventory.p.abilities.sabre = true;
+        this.drawMannequin(ctx, dx + dw / 2 + (d.slot === 'trail' ? 30 : d.slot === 'blade' ? -30 : 0), 244, 4, { trail: d.slot === 'trail', slash: d.slot === 'blade' && Math.floor(this.t * 1.2) % 2 === 0 });
+        Inventory.p.abilities.sabre = abil;
+        Inventory.preview = null;
+      } else if (d.slot === 'rebuild') {
+        ctx.textAlign = 'center';
+        if (d.omega) { ctx.fillStyle = 'rgba(255,40,40,0.15)'; ctx.font = 'bold 160px ' + MONO; ctx.fillText('Ω', dx + dw / 2, 230); }
+        ctx.fillStyle = d.color; ctx.font = 'bold 18px ' + MONO; ctx.fillText(d.title, dx + dw / 2 + rand(-1, 1), 150);
+        ctx.font = '11px ' + FONT; ctx.fillText(d.sub, dx + dw / 2, 174);
+        ctx.strokeStyle = d.color; ctx.strokeRect(dx + 53, 188, 200, 10);
+        ctx.fillRect(dx + 55, 190, 196 * ((this.t * 0.7) % 1), 6);
+        ctx.textAlign = 'left';
+      } else if (d.slot === 'ability') {
+        if (!ItemArt.draw(ctx, d.key, dx + dw / 2, 160, this.t, own)) {
+          ctx.textAlign = 'center'; ctx.fillStyle = own ? '#fc6' : '#666'; ctx.font = 'bold 60px ' + FONT;
+          ctx.fillText('⚔', dx + dw / 2, 195); ctx.textAlign = 'left';
+        }
+      } else {
+        const cx = dx + dw / 2, cy = 170;
+        ctx.fillStyle = '#3a3226'; ctx.fillRect(cx - 50, cy + 30, 100, 16);
+        ctx.fillStyle = 'rgba(150,220,235,0.15)'; ctx.fillRect(cx - 44, cy - 50, 88, 80);
+        ctx.strokeStyle = '#bfe8f0'; ctx.strokeRect(cx - 44, cy - 50, 88, 80);
+        ctx.save(); ctx.translate(cx, cy - 10); ctx.rotate(Math.sin(this.t) * 0.2);
+        ctx.fillStyle = d.icon; ctx.beginPath(); for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; ctx.lineTo(Math.cos(a) * 20, Math.sin(a) * 20); } ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.fillRect(-8, -10, 6, 4);
+        ctx.restore();
+      }
     }
     ctx.restore(); ctx.globalAlpha = 1;
     ctx.fillStyle = own ? r.color : '#888'; ctx.font = 'bold 20px ' + FONT; ctx.fillText(own ? d.name : '？？？', dx, 292);
