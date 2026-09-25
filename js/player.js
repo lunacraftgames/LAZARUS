@@ -30,8 +30,15 @@ const WPN = {
 const HEAVY = { active: 0.16, cd: 0.45, swing: 0.26, reach: 92, arc: 62 };
 
 class Player {
-  constructor(x, y) { this.w = 20; this.h = PL.H; this.reset(x, y); }
+  // charId：可选角色（见 characters.js），默认读取当前周目的角色
+  constructor(x, y, charId) {
+    this.chId = charId || (typeof Game !== 'undefined' && Game.charId) || 'lazarus';
+    this.C = typeof charDef === 'function' ? charDef(this.chId) : { pl: {}, w: 20, h: PL.H };
+    this.K = Object.assign({}, PL, this.C.pl); // 本角色的手感参数
+    this.w = this.C.w; this.h = this.K.H; this.reset(x, y);
+  }
   reset(x, y) {
+    y += PL.H - this.K.H; // 存档点坐标按拉撒路的身高计算：矮一点的角色脚的位置保持不变
     Object.assign(this, {
       x, y, vx: 0, vy: 0, onGround: false, ground: null, groundOneWay: false,
       coyote: 0, jumpBuf: 0, jumping: false, dashT: 0, dashCd: 0, canDash: true, dashLock: 0,
@@ -43,7 +50,8 @@ class Player {
       gd: 1, prevTop: y, cubeRot: 0, frozen: false, // 第四章：重力方向（1 正常 / -1 反转）、一键模式、终局冻结
       lookUp: false, lookT: 0, atkUp: false,         // 向上瞄准
       aimDown: false,                                // 空中向下瞄准
-      h: PL.H, crouch: false,                        // 下蹲：碰撞箱降低 1/3
+      h: this.K.H, crouch: false,                    // 下蹲：碰撞箱降低 1/3
+      cling: null, clingCd: 0,                       // 小扫：贴墙 / 倒挂
     });
   }
   hurt() { const t = this.crouch ? 3 : 6; return { x: this.x + 4, y: this.y + t, w: this.w - 8, h: this.h - t - 2 }; }
@@ -51,7 +59,7 @@ class Player {
   setHeight(h) { if (this.gd > 0) this.y += this.h - h; this.h = h; }
   // 起身前检查头顶有没有空间
   roomToStand(W) {
-    const r = { x: this.x, y: this.gd > 0 ? this.y + this.h - PL.H : this.y, w: this.w, h: PL.H };
+    const H = this.K.H, r = { x: this.x, y: this.gd > 0 ? this.y + this.h - H : this.y, w: this.w, h: H };
     for (let cy = Math.floor(r.y / TILE); cy <= Math.floor((r.y + r.h - 0.001) / TILE); cy++)
       for (let cx = Math.floor(r.x / TILE); cx <= Math.floor((r.x + r.w - 0.001) / TILE); cx++) if (W.solidAt(cx, cy)) return false;
     for (const s of W.solids) if (s.active && !s.oneWay && s.owner !== this && overlap(r, s)) return false;
@@ -63,12 +71,12 @@ class Player {
     if (!W || !W.reach) return null;
     const R = W.reach;
     // 以站立时的头顶为基准；下蹲时横向攻击的高度降低一半
-    const top = this.y + this.h - PL.H, low = this.crouch ? PL.CROUCH_ATK : 0;
+    const PH = this.K.H, top = this.y + this.h - PH, low = this.crouch ? PL.CROUCH_ATK : 0;
     let b;
-    if (this.atkHeavy) b = { x: this.facing > 0 ? this.x + this.w - 10 : this.x + 10 - R, y: top - 26 + low, w: R, h: PL.H + 34 };
+    if (this.atkHeavy) b = { x: this.facing > 0 ? this.x + this.w - 10 : this.x + 10 - R, y: top - 26 + low, w: R, h: PH + 34 };
     else if (this.atkDown) b = { x: this.x - 12, y: this.y + this.h - 6, w: this.w + 24, h: R - 8 };
     else if (this.atkUp) b = { x: this.x - 12, y: top - R + 14, w: this.w + 24, h: R - 8 }; // 按住「向上瞄准」：朝上劈
-    else b = { x: this.facing > 0 ? this.x + this.w - 6 : this.x + 6 - R, y: top - 10 + low, w: R, h: PL.H + 16 };
+    else b = { x: this.facing > 0 ? this.x + this.w - 6 : this.x + 6 - R, y: top - 10 + low, w: R, h: PH + 16 };
     if (this.gd < 0) b.y = 2 * this.cy - (b.y + b.h); // 重力反转：上下镜像
     return b;
   }
@@ -121,10 +129,11 @@ class Player {
     if (gd !== this.gd) { this.gd = gd; this.onGround = false; this.coyote = 0; this.jumping = false; this.jumpsLeft = 1; }
     // ---- 下蹲：站在地上按住 ↓；松开后头顶有空间才会站起来 ----
     const cube = g.core && g.core.mode === 'cube';
-    const wantCrouch = this.onGround && !this.inWater && !cube && I.down('down') && !I.down('up') && this.dashT <= 0;
+    const wantCrouch = !this.C.noCrouch && this.onGround && !this.inWater && !cube && I.down('down') && !I.down('up') && this.dashT <= 0;
     if (wantCrouch && !this.crouch) { this.crouch = true; this.setHeight(PL.CROUCH_H); }
     else if (!wantCrouch && this.crouch && (cube || this.roomToStand(W))) { this.crouch = false; this.setHeight(PL.H); }
-    if (cube) return this.updateCube(dt, g, I, ctl);
+    if (cube) { this.cling = null; return this.updateCube(dt, g, I, ctl); }
+    this.clingCd -= dt;
     this.vy *= gd;
     const footY = gd > 0 ? this.y + this.h + 1 : this.y - 1;
     if (I.hit('jump')) this.jumpBuf = PL.BUFFER; else this.jumpBuf -= dt;
@@ -147,6 +156,7 @@ class Player {
         if (!dx && !dy) dx = this.facing;
         const l = Math.hypot(dx, dy);
         this.dashDir = { x: dx / l, y: dy / l };
+        if (this.cling) { const s = this.cling.s; this.cling = null; this.clingCd = 0.15; if ((s === 'L' && dx < 0) || (s === 'R' && dx > 0)) { dx = 0; dy = dy || -1; const l2 = Math.hypot(dx, dy); this.dashDir = { x: dx / l2, y: dy / l2 }; } }
         this.dashT = PL.DASH_TIME; this.canDash = false; this.dashCd = PL.DASH_CD; this.jumping = false;
         if (dx) this.facing = Math.sign(dx);
         ctl.dashed = true; ctl.dashDir = this.dashDir;
@@ -189,6 +199,7 @@ class Player {
       }
     } else if (!WP || !WP.charge) this.chargeT = -1;
     this.atkSwing = Math.max(0, this.atkSwing - dt);
+    if (this.cling && this.dashT <= 0) { this.vy = 0; return this.updateCling(dt, g, I, ctl); } // 小扫：吸附在墙上 / 倒挂
 
     if (this.dashT > 0) {
       this.dashT -= dt;
@@ -204,7 +215,7 @@ class Player {
       // 地面冲刺可以接跳跃（长跳）
       if (this.jumpBuf > 0 && this.coyote > 0) {
         this.dashT = 0; this.jumpBuf = 0; this.coyote = 0; this.vx *= 0.75;
-        this.vy = -PL.JUMP; this.jumping = true; Sound.sfx.jump(); this.sx = 0.75; this.sy = 1.3; ctl.jumped = 'ground';
+        this.vy = -this.K.JUMP; this.jumping = true; Sound.sfx.jump(); this.sx = 0.75; this.sy = 1.3; ctl.jumped = 'ground';
       } else if (this.dashT <= 0) {
         this.vx *= 0.6; this.vy = this.vy < 0 ? this.vy * 0.45 : this.vy * 0.5;
       }
@@ -225,11 +236,11 @@ class Player {
       }
       if (Math.random() < 0.06) g.particles.add({ x: this.cx + rand(-4, 4), y: this.y + 4, vx: rand(-10, 10), vy: rand(-50, -30), life: 1, size: 2, color: 'rgba(180,240,255,0.7)', shape: 'ring' });
     } else {
-      const target = mx * PL.RUN * (this.crouch && this.onGround ? PL.CROUCH_RUN : 1);
-      let acc = this.onGround ? (mx ? PL.ACC_G : PL.DEC_G) : (mx ? PL.ACC_A : PL.DEC_A);
+      const K = this.K, target = mx * K.RUN * (this.crouch && this.onGround ? PL.CROUCH_RUN : 1);
+      let acc = this.onGround ? (mx ? K.ACC_G : K.DEC_G) : (mx ? K.ACC_A : K.DEC_A);
       const wire = g.core && g.core.mode === 'wire'; // 第四章线框视界：没有惯性，起跳高度固定
       // 空中顺着方向时保留冲刺带来的额外速度（手感更宽容）
-      if (!this.onGround && mx && Math.sign(this.vx) === mx && Math.abs(this.vx) > PL.RUN) acc = 380;
+      if (!this.onGround && mx && Math.sign(this.vx) === mx && Math.abs(this.vx) > K.RUN) acc = 380;
       if (wire) acc = 1e5;
       this.vx = approach(this.vx, target, acc * dt);
       if (mx) this.facing = mx;
@@ -242,11 +253,11 @@ class Player {
         this.jumpBuf = 0; this.coyote = 0;
         if (this.onGround && this.groundOneWay && I.down('down')) { this.dropT = 0.22; this.onGround = false; }
         else {
-          this.vy = -PL.JUMP * (this.slimeT > 0 ? 0.71 : 1); this.jumping = true; this.onGround = false; this.sx = 0.75; this.sy = 1.3;
+          this.vy = -K.JUMP * (this.slimeT > 0 ? 0.71 : 1); this.jumping = true; this.onGround = false; this.sx = 0.75; this.sy = 1.3;
           Sound.sfx.jump(); ctl.jumped = 'ground';
           g.particles.burst(this.cx, this.y + this.h, 6, { color: this.slimeT > 0 ? '#8f4' : '#8a8070', smin: 20, smax: 80, angle: -Math.PI / 2, spread: 1.3, lmin: 0.2, lmax: 0.4, grav: 200 });
         }
-      } else if (this.jumpBuf > 0 && !this.onGround && this.coyote <= 0 && this.jumpsLeft > 0 && Inventory.ability('doubleJump')) {
+      } else if (this.jumpBuf > 0 && !this.onGround && this.coyote <= 0 && this.jumpsLeft > 0 && Inventory.ability('doubleJump') && !this.C.noDoubleJump) {
         // ---- 二段跳（推进囊）；被粘液粘住时不可用 ----
         if (this.slimeT > 0) { if (I.hit('jump')) { Sound.sfx.denied(); g.hudSlime = 0.6; } }
         else {
@@ -261,7 +272,8 @@ class Player {
 
     // ---- 位移与碰撞 ----
     const hx = W.moveX(this, this.vx * dt);
-    if (hx) this.vx = 0;
+    if (hx) { this.vx = 0; if (this.C.crawl && hx.tile) this.tryWallAttach(g, mx, I); }
+    if (this.cling) { this.vy = 0; return this.clingAnim(dt); }
     const wasGround = this.onGround;
     const ry = W.moveY(this, this.vy * dt * gd, this.dropT > 0 && gd > 0);
     this.onGround = false; this.ground = null; this.groundOneWay = false;
@@ -277,8 +289,11 @@ class Player {
       } else {
         this.vy = 0;
         if (this.dashT > 0 && this.dashDir.y < 0) this.dashT = 0;
+        if (this.C.crawl && ry.tile) { this.tryCeilAttach(g, I); if (this.cling) return this.clingAnim(dt); }
       }
     }
+    // 小扫：走出台子边缘时按住 ↓ → 翻到台子侧面往下爬
+    if (this.C.crawl && wasGround && !this.onGround && this.vy >= 0 && I.down('down') && this.dashT <= 0 && this.tryLedgeWrap(g, mx || this.facing)) return this.clingAnim(dt);
     this.airT = this.onGround ? 0 : this.airT + dt;
     this.vy *= gd; // 换回世界坐标
 
@@ -312,7 +327,7 @@ class Player {
       return;
     }
     this.drawBody(ctx, this.x, this.y, this.facing, this.sx, this.sy, g);
-    if (this.atkSwing > 0) this.drawSlash(ctx, g);
+    if (this.atkSwing > 0) { if (this.C.weapon === 'brush') this.drawBrushSwing(ctx, g); else this.drawSlash(ctx, g); }
     // 蓄力光：满了以后变成金色并闪烁
     const Wc = WPN[Inventory.weapon()];
     if (Wc && Wc.charge && this.chargeT > 0.12) {
@@ -328,7 +343,7 @@ class Player {
 
   drawSlash(ctx, g) {
     const sk = Inventory.equipped('blade'), k = 1 - this.atkSwing / (this.atkSwingMax || 0.12);
-    const feet = this.y + this.h, cx = this.cx, cy = feet - PL.H / 2 + (this.crouch && !this.atkDown && !this.atkUp ? PL.CROUCH_ATK : 0);
+    const feet = this.y + this.h, cx = this.cx, cy = feet - this.K.H / 2 + (this.crouch && !this.atkDown && !this.atkUp ? PL.CROUCH_ATK : 0);
     ctx.save();
     if (this.crouch) { ctx.beginPath(); ctx.rect(cx - 200, feet - 300, 400, 300); ctx.clip(); } // 下蹲：刀光不画到地面以下
     ctx.translate(cx, cy);
@@ -358,6 +373,7 @@ class Player {
   }
 
   drawBody(ctx, x, y, facing, sx, sy, g, tint) {
+    if (this.C && this.C.draw) return this[this.C.draw](ctx, x, y, facing, sx, sy, g, tint);
     const t = g.t;
     ctx.save();
     ctx.translate(Math.round(x + this.w / 2), Math.round(y + this.h));

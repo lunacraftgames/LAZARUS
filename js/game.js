@@ -10,7 +10,7 @@ const Game = {
   particles: new Particles(), boss: null, exhibit: null,
   cam: { x: 0, y: 0, shake: 0 },
   checkpoint: null, permDead: new Set(),
-  deaths: 0, chips: new Set(), runTime: 0, levelT: 0,
+  deaths: 0, chips: new Set(), runTime: 0, levelT: 0, charId: 'lazarus',
   radio: { queue: [], cur: null, glitch: 0 },
   toasts: [], freezeT: 0, flashA: 0, flashC: '#fff', alarmFlash: 0, hudDeny: 0,
   hot: [], menuSel: 0, pauseSel: 0, storyIdx: 0, storyT: 0, cardT: 0, deadT: 0, clearT: 0, endT: 0, bossDoneT: -1,
@@ -41,6 +41,7 @@ const Game = {
     this.setupTouch();
     const s = Save.load();
     if (s) { this.deaths = s.deaths || 0; this.chips = new Set(s.chips || []); this.runTime = s.time || 0; }
+    this.charId = (s && s.char) || Inventory.p.char || 'lazarus';
     for (const id of this.chips) Inventory.p.chipLog[id] = 1; // 旧存档：把本周目已收集的芯片计入收藏
     this.checkChipRewards();
     this.toTitle();
@@ -82,25 +83,33 @@ const Game = {
   },
   toast(title, text) { this.toasts.push({ title, text, t: 0 }); },
   toastHint(text) { if (!this.hintT || this.t - this.hintT > 4) { this.hintT = this.t; this.toasts.push({ title: '提示', text, t: 0, short: true }); } },
-  persist() { Inventory.save(); Save.save({ level: this.levelIndex, deaths: this.deaths, chips: [...this.chips], time: this.runTime }); },
+  persist() { Inventory.save(); Save.save({ level: this.levelIndex, deaths: this.deaths, chips: [...this.chips], time: this.runTime, char: this.charId }); },
 
   // ---------------- 状态切换 ----------------
   toTitle() {
     this.state = 'title'; this.stateT = 0; this.menuSel = 0; Sound.music('radio');
     const s = Save.load();
+    Inventory.charWeapon = null;
+    // 当前周目的角色：继续游戏用存档里的角色；没有存档时（章节选择重玩）用最近一次开新游戏选的角色
+    this.charId = (s && s.char) || Inventory.p.char || 'lazarus';
+    if (!charDef(this.charId).unlocked()) this.charId = 'lazarus';
     const m = [];
     const cont = s && s.level > 0 && s.level < LEVELS.length;
     if (cont) m.push({ label: `继续游戏 · ${LEVELS[s.level].id} ${LEVELS[s.level].name}`, act: 'continue', lv: s.level });
     m.push({ label: cont ? '新的游戏' : '开始游戏', act: 'new' });
     if (Inventory.p.ch1Clear) m.push({ label: '章节选择', act: 'select' });
     this.titleCh = cont ? chapterOf(LEVELS[s.level]) : 1;
+    m.push({ label: '角色', act: 'chars', dot: CHAR_ORDER.some((id) => charDef(id).unlocked() && !Inventory.p.charSeen[id] && id !== 'lazarus') });
     if (Inventory.p.hiddenEnd) m.push({ label: '隐藏结局 · 记忆全集', act: 'hidden' });
     m.push({ label: '仓库 · 武器与外观', act: 'inv' });
     m.push({ label: '按键设置', act: 'keys' });
     m.push({ label: '声音设置', act: 'audio' });
     this.menu = m; this.menuSel = Math.min(this.menuSel, m.length - 1);
   },
-  newGame() {
+  // 新的游戏：先选角色（只有这里能选，整个周目不能更换），再播开场剧情
+  newGame() { this.openChars('new'); },
+  beginRun(charId) {
+    this.charId = charId; Inventory.p.char = charId; Inventory.save();
     this.deaths = 0; this.chips = new Set(); this.runTime = 0; Save.clear();
     this.playStory(1);
   },
@@ -153,7 +162,8 @@ const Game = {
     this.tileCanvas = renderTiles(this.world, occ, def.theme.tiles);
     this.permDead = new Set();
     this.checkpoint = { x: spawn.cx * TILE + 6, y: (spawn.cy + 1) * TILE - 28 };
-    this.player = new Player(this.checkpoint.x, this.checkpoint.y);
+    Inventory.charWeapon = charDef(this.charId).weapon || null;
+    this.player = new Player(this.checkpoint.x, this.checkpoint.y, this.charId);
     this.player.spawnT = 0.45;
     this.radioTriggers = def.radio.map((r) => Object.assign({ fired: false }, r));
     this.radio.queue = []; this.radio.cur = null;
@@ -263,12 +273,14 @@ const Game = {
     if (this.deaths === this.levelDeaths0) { this.toast('零重构通关', '一次都没有被摧毁——获得额外补给。'); Inventory.drop(9003); }
     else if (Math.random() < 0.25) Inventory.drop(9002);
     this.levelIndex = Math.min(this.levelIndex + 1, LEVELS.length - 1);
-    Save.save({ level: this.levelIndex, deaths: this.deaths, chips: [...this.chips], time: this.runTime });
+    Save.save({ level: this.levelIndex, deaths: this.deaths, chips: [...this.chips], time: this.runTime, char: this.charId });
   },
   onBossDefeated() {
     const ch = this.chapter;
     this.bossDoneT = 0; Sound.music('ending');
+    const locked = CHAR_ORDER.filter((id) => !charDef(id).unlocked());
     Inventory.p['ch' + ch + 'Clear'] = true; Inventory.save();
+    for (const id of locked) if (charDef(id).unlocked()) setTimeout(() => this.toasts.push({ title: `新角色解锁 · ${charDef(id).name} ${charDef(id).en}`, text: '开始「新的游戏」时可以选择；标题画面「角色」里可以查看', t: 0, color: charDef(id).color }), 3600);
     if (this.deaths === this.levelDeaths0) setTimeout(() => Inventory.drop(9003), 2400);
     if (ch === 2) {
       this.say(RADIO.incDefeat);
@@ -313,6 +325,8 @@ const Game = {
     }[key];
     this.toast(T[0], Input.fmt(T[1]));
     this.say(T[2]);
+    const C = this.player.C;
+    if ((C.weapon && (WEAPON_KEYS.includes(key) || key === 'dashStrike')) || (C.noDoubleJump && key === 'doubleJump')) this.toast(`${C.name}用不了它`, `已经为拉撒路永久解锁。${C.name}使用自己的专属能力。`);
     if (key === 'relicBlade') this.bossDoneT = Math.min(this.bossDoneT, 0);
   },
   onItemGrant(d, src) {
@@ -351,6 +365,7 @@ const Game = {
       case 'end': return this.updateEnd(dt);
       case 'paused': return this.updatePause(dt);
       case 'inv': return this.updateInventory(dt);
+      case 'chars': return this.updateChars(dt);
       case 'keys': return this.updateKeys(dt);
       case 'audio': return this.updateAudio(dt);
       case 'select': return this.updateSelect(dt);
@@ -375,6 +390,7 @@ const Game = {
     if (m.act === 'continue') this.startLevel(m.lv);
     else if (m.act === 'select') { this.state = 'select'; this.selSel = 0; this.selCh = this.titleCh || 1; }
     else if (m.act === 'inv') this.openInventory('title');
+    else if (m.act === 'chars') this.openChars('view');
     else if (m.act === 'hidden') { this.playLines(HIDDEN_END, () => this.toTitle()); Sound.music('ending'); }
     else if (m.act === 'keys') this.openKeys('title');
     else if (m.act === 'audio') this.openAudio('title');
@@ -411,7 +427,7 @@ const Game = {
     Sound.sfx.confirm();
     const next = this.endCh + 1;
     if (CHAPTERS[next] && chapterStart(next) >= 0) {
-      Save.save({ level: chapterStart(next), deaths: this.deaths, chips: [...this.chips], time: this.runTime });
+      Save.save({ level: chapterStart(next), deaths: this.deaths, chips: [...this.chips], time: this.runTime, char: this.charId });
       this.playStory(next);
       return;
     }
@@ -468,7 +484,7 @@ const Game = {
     this.bolts = this.bolts.filter((b) => b.t < b.life);
 
     if (this.state === 'play') {
-      const ab = p.attackBox(), dashStrike = p.dashT > 0 && Inventory.ability('dashStrike');
+      const ab = p.attackBox(), dashStrike = p.dashT > 0 && (Inventory.ability('dashStrike') || p.C.rollStrike);
       for (const e of this.enemies) {
         if (!e.alive || this.state !== 'play') continue;
         // 残刃挥砍
@@ -526,7 +542,7 @@ const Game = {
         const toEnd = () => {
           this.state = 'end'; this.stateT = 0; this.endT = 0; this.endCh = ch;
           const next = chapterStart(ch + 1);
-          Save.save({ level: next > 0 ? next : 0, deaths: this.deaths, chips: [...this.chips], time: this.runTime });
+          Save.save({ level: next > 0 ? next : 0, deaths: this.deaths, chips: [...this.chips], time: this.runTime, char: this.charId });
         };
         this.bossDoneT = -1;
         // 最终章：先播结局剧情；集齐全部记忆芯片时紧接着播隐藏结局
@@ -595,6 +611,7 @@ const Game = {
       case 'story': return this.renderStory(ctx);
       case 'end': return this.renderEnd(ctx);
       case 'inv': return this.renderInventory(ctx);
+      case 'chars': return this.renderChars(ctx);
       case 'keys': return this.renderKeys(ctx);
       case 'audio': return this.renderAudio(ctx);
       case 'select': return this.renderSelect(ctx);
@@ -730,14 +747,14 @@ const Game = {
     const wk = Inventory.weapon();
     if (wk) {
       // 当前武器：小图标 + 名字 + 冷却条（点击可切换）
-      const wx = dx + 124, ww = 118, info = WEAPON_INFO[wk], many = Inventory.owned().length > 1;
+      const wx = dx + 124, ww = 118, info = WEAPON_INFO[wk], many = Inventory.owned().length > 1 && !Inventory.charWeapon;
       ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(wx, 12, ww, 44);
       ctx.save(); ctx.beginPath(); ctx.rect(wx, 12, 44, 44); ctx.clip();
       ItemArt.icon(ctx, wk, wx + 22, 32, 0.2, this.t);
       ctx.restore();
       ctx.font = '10px ' + MONO; ctx.fillStyle = 'rgba(200,200,200,0.7)'; ctx.fillText(info.en, wx + 46, 27);
       if (many) { ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(255,210,120,0.8)'; ctx.fillText(Input.glyph('swap'), wx + ww - 6, 27); ctx.textAlign = 'left'; }
-      const col = wk === 'flintlock' ? '#ffd070' : wk === 'sporeGun' ? '#9fe8c0' : Inventory.equipped('blade').edge;
+      const col = wk === 'flintlock' ? '#ffd070' : wk === 'sporeGun' ? '#9fe8c0' : wk === 'brush' ? '#fc4' : Inventory.equipped('blade').edge;
       const k = p.atkCd > 0 ? 1 - p.atkCd / (p.atkCdMax || 0.17) : 1;
       ctx.fillStyle = 'rgba(255,255,255,0.1)'; ctx.fillRect(wx + 46, 34, 62, 6);
       ctx.fillStyle = p.atkCd > 0 ? '#777' : col; ctx.fillRect(wx + 46, 34, 62 * k, 6);
@@ -746,7 +763,7 @@ const Game = {
       if (many) this.addHot(wx, 12, ww, 44, () => { if (this.state === 'play') this.swapWeapon(); });
     }
     // 二段跳 / 粘液
-    if (Inventory.ability('doubleJump')) {
+    if (Inventory.ability('doubleJump') && !p.C.noDoubleJump) {
       const jx = dx + (Inventory.canAttack() ? 250 : 124);
       ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(jx, 12, 64, 44);
       ctx.font = '10px ' + MONO; ctx.fillStyle = 'rgba(200,200,200,0.7)'; ctx.fillText(p.slimeT > 0 ? '' : p.inWater ? 'SWIM' : 'JUMP+', jx + 10, 28);
@@ -929,11 +946,14 @@ const Game = {
     ctx.fillStyle = '#c9b88a'; ctx.font = '18px ' + FONT; ctx.fillText(`${CH_NUM[tch]} · ${TC.name}`, tx + 4, ty + 40);
     ctx.fillStyle = 'rgba(200,190,160,0.6)'; ctx.font = '12px ' + MONO; ctx.fillText(`CHAPTER ${tch} · ${TC.en}`, tx + 4, ty + 62);
     // 菜单
+    const many = this.menu.length > 6, my0 = many ? 262 : 278, mstep = many ? 22 : 28; // 菜单项多时收紧行距，避免压住下面的按键提示
     this.menu.forEach((m, i) => {
-      const sel = i === this.menuSel;
-      ctx.fillStyle = sel ? '#7ff' : 'rgba(220,220,220,0.6)'; ctx.font = (sel ? 'bold ' : '') + '20px ' + FONT;
-      ctx.fillText((sel ? '▶ ' : '   ') + m.label, tx, 278 + i * 28);
-      this.addHot(tx - 10, 278 + i * 28 - 21, 380, 27, () => { if (this.stateT > 0.3) this.activateTitle(); }, () => { this.menuSel = i; });
+      const sel = i === this.menuSel, my = my0 + i * mstep;
+      ctx.fillStyle = sel ? '#7ff' : 'rgba(220,220,220,0.6)'; ctx.font = (sel ? 'bold ' : '') + (many ? '18px ' : '20px ') + FONT;
+      const label = (sel ? '▶ ' : '   ') + m.label;
+      ctx.fillText(label, tx, my);
+      if (m.dot) { ctx.fillStyle = '#fc6'; ctx.beginPath(); ctx.arc(tx + ctx.measureText(label).width + 10, my - 6, 4, 0, 7); ctx.fill(); } // 有新解锁的内容
+      this.addHot(tx - 10, my - mstep + 6, 380, mstep - 1, () => { if (this.stateT > 0.3) this.activateTitle(); }, () => { this.menuSel = i; });
     });
     ctx.fillStyle = 'rgba(200,200,200,0.5)'; ctx.font = '12px ' + FONT;
     drawHintLine(ctx, tx, 440, [{ k: 'confirm' }, '确认', { k: 'select' }, '选择'].concat(Input.usingPad ? [] : [{ k: 'mute' }, '静音']));

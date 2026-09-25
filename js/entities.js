@@ -61,7 +61,7 @@ class Spring {
     this.comp = Math.max(0, this.comp - dt * 4); this.cd -= dt;
     const p = g.player;
     if (g.state === 'play' && this.cd <= 0 && p.vy >= 0 && overlap(p, this)) {
-      p.y = this.y - p.h; p.vy = -PL.SPRING; p.jumping = false; p.onGround = false; p.canDash = true; p.dashT = 0; p.coyote = 0; p.jumpsLeft = 1;
+      p.cling = null; p.y = this.y - p.h; p.vy = -PL.SPRING; p.jumping = false; p.onGround = false; p.canDash = true; p.dashT = 0; p.coyote = 0; p.jumpsLeft = 1;
       p.sx = 0.7; p.sy = 1.4; this.comp = 1; this.cd = 0.15;
       Sound.sfx.spring(); Input.rumble(0.1, 0.5, 90);
       g.particles.burst(this.x + 14, this.y, 10, { color: ['#ffd070', '#fff'], smin: 60, smax: 180, angle: -Math.PI / 2, spread: 0.8, lmin: 0.2, lmax: 0.4, add: true });

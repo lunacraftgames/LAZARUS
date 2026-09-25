@@ -94,6 +94,7 @@ class SporeCloud {
 Object.assign(Game, {
   // 切换到下一把已拥有的武器
   swapWeapon() {
+    if (Inventory.charWeapon) { Sound.sfx.denied(); this.toastHint(`${this.player.C.name}只能使用专属的${WEAPON_INFO[Inventory.charWeapon].name}`); return; }
     const p = this.player, k = Inventory.cycleWeapon(1);
     if (!k) { if (Inventory.owned().length === 1) { Sound.sfx.denied(); this.toastHint('目前只有一把武器'); } return; }
     p.atkT = 0; p.atkSwing = 0; p.chargeT = -1; p.atkHeavy = false; p.atkCd = Math.min(p.atkCd, 0.12);

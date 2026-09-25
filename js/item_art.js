@@ -306,7 +306,28 @@ const ItemArt = (() => {
     rivet(ctx, -60, -2, 2.4); rivet(ctx, 30, -4, 2.4);
   }
 
-  const ART = { sabre: { fn: sabre, rot: -0.12, s: 0.95 }, relicBlade: { fn: relic, rot: -0.1, s: 0.9 }, dashStrike: { fn: dash, rot: 0, s: 1 }, doubleJump: { fn: thruster, rot: 0, s: 0.85 }, flintlock: { fn: flintlock, rot: -0.06, s: 0.95 }, sporeGun: { fn: spore, rot: -0.05, s: 1.05 } };
+  // ---------------- 小扫的旋转刷 ----------------
+  function brush(ctx, t) {
+    const spin = t * 8;
+    // 刷盘底座
+    ctx.fillStyle = lg(ctx, 0, -40, 0, 20, [[0, '#f2c440'], [1, '#8a6414']]);
+    ctx.beginPath(); ctx.ellipse(0, -10, 80, 26, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#3a2e14'; ctx.lineWidth = 2; ctx.stroke();
+    // 警示条纹
+    ctx.save(); ctx.beginPath(); ctx.ellipse(0, -10, 80, 26, 0, 0, Math.PI * 2); ctx.clip();
+    ctx.fillStyle = '#222'; for (let i = -100; i < 100; i += 24) { ctx.beginPath(); ctx.moveTo(i, 16); ctx.lineTo(i + 12, 16); ctx.lineTo(i + 30, -36); ctx.lineTo(i + 18, -36); ctx.fill(); }
+    ctx.restore();
+    // 旋转的刷毛
+    for (let i = 0; i < 28; i++) {
+      const a = spin + i / 28 * Math.PI * 2, x = Math.cos(a) * 70, z = Math.sin(a);
+      ctx.strokeStyle = z > 0 ? '#f0e8c8' : '#9a9070'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(x, 8 + z * 8); ctx.lineTo(x * 1.08, 34 + z * 8); ctx.stroke();
+    }
+    // 中心轴
+    ctx.fillStyle = rg(ctx, -6, -18, 0, 20, [[0, '#fff2c0'], [1, '#6a5018']]); ctx.beginPath(); ctx.arc(0, -12, 16, 0, 7); ctx.fill();
+    glow(ctx, 0, -12, 40, '255,210,90', 0.25);
+  }
+  const ART = { brush: { fn: brush, rot: 0, s: 1 }, sabre: { fn: sabre, rot: -0.12, s: 0.95 }, relicBlade: { fn: relic, rot: -0.1, s: 0.9 }, dashStrike: { fn: dash, rot: 0, s: 1 }, doubleJump: { fn: thruster, rot: 0, s: 0.85 }, flintlock: { fn: flintlock, rot: -0.06, s: 0.95 }, sporeGun: { fn: spore, rot: -0.05, s: 1.05 } };
 
   function draw(ctx, key, cx, cy, t, own) {
     const A = ART[key]; if (!A) return false;
