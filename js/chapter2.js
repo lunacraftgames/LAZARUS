@@ -1027,7 +1027,7 @@ const LEVELS_CH2 = [
 ];
 
 CHAPTERS[2] = {
-  name: '进化育婴室', en: 'THE EVOLUTIONARY HIVE', story: STORY2, lore: LORE2,
+  name: '进化育婴室', en: 'THE EVOLUTIONARY HIVE', story: STORY2, lore: LORE2, theme: THEMES.hive,
   end: {
     theme: 'hive', reward: ['doubleJump', '能力：推进囊（二段跳）已永久解锁'],
     line: '培养舱一个接一个熄灭。电梯井深处，传来新的运转声。', quote: '「继续向上吧，拉撒路。地表就快到了。」', glitch: '「样本 LZ-01 · 第二阶段数据已归档。」',

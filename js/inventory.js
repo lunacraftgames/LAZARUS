@@ -86,6 +86,7 @@ const GENERATORS = [
   { id: 9002, type: 'generator', name: '区域突破补给', desc: '通关普通关卡时有概率掉落', pool: ['common', 'uncommon', 'rare', 'legendary'] },
   { id: 9003, type: 'generator', name: '零重构嘉奖', desc: '一次不死通过一个关卡', pool: ['uncommon', 'rare', 'legendary'] },
   { id: 9005, type: 'generator', name: '繁育者残骸', desc: '击败繁育者时的掉落', pool: ['common', 'uncommon', 'rare', 'legendary'] },
+  { id: 9006, type: 'generator', name: '镜像残骸', desc: '击败镜像拉撒路时的掉落', pool: ['common', 'uncommon', 'rare', 'legendary'] },
   { id: 9004, type: 'playtimegenerator', name: '游玩时长掉落', desc: '每累计游玩 30 分钟', pool: ['common', 'uncommon', 'rare'], dropInterval: 30 },
 ];
 const DEF_BY_ID = {};

@@ -190,7 +190,7 @@ Object.assign(Game, {
     const chs = this.selChapters();
     if (!chs.includes(this.selCh)) this.selCh = chs[chs.length - 1];
     const ch = this.selCh;
-    drawBackground(ctx, { x: this.t * 10, y: 0 }, ch === 2 ? THEMES.hive : THEMES.hall, this.t);
+    drawBackground(ctx, { x: this.t * 10, y: 0 }, CHAPTERS[ch].theme || THEMES.hall, this.t);
     ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(0, 0, VW, VH);
     ctx.fillStyle = '#f2ead6'; ctx.font = 'bold 28px ' + FONT; ctx.fillText('章节选择', 70, 72);
     // 章节标签

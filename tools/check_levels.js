@@ -1,12 +1,13 @@
 // 关卡可达性粗检：node tools/check_levels.js
 // 基于跳跃包络（高 3 格 / 远 4~7 格，冲刺 +3 格，弹床 +9 格高）在瓦片网格上做 BFS，
 // 第二章起：二段跳（高 6 格）、培养液（可自由上浮，出水跳 3 格）、反弹软体怪（踩头 +8 格高）。
+// 第三章：代码门视为已打开（机关谜题需要手动验证），逻辑地雷下的平台视为存在。
 // 只用于发现“明显无法到达出口”的设计错误；不模拟敌人、激光、时序，结果仅供参考。
 const fs = require('fs'), vm = require('vm'), path = require('path');
 const ctx = {}; vm.createContext(ctx);
 // 只需要地图数据：其余依赖用空壳代替
 vm.runInContext('var TILESETS={},PROP_FACTORIES={},PICKUP_INFO={},Inventory={ability:()=>false};function makeEnemy(){}', ctx);
-const src = ['levels.js', 'chapter2.js'].map((f) => fs.readFileSync(path.join(__dirname, '../js', f), 'utf8')).join('\n');
+const src = ['levels.js', 'chapter2.js', 'chapter3.js'].map((f) => fs.readFileSync(path.join(__dirname, '../js', f), 'utf8')).join('\n');
 vm.runInContext(src + '\nthis.LEVELS=LEVELS;this.makeBuilder=makeBuilder;', ctx);
 const SOLID = '#=', ONE = '-C', BLOCK = SOLID + ONE;
 const H = { 3: 4, 2: 5, 1: 6, 0: 7 };

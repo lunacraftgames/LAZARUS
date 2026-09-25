@@ -114,6 +114,7 @@ const Game = {
     const B = makeBuilder(def.w, def.h); def.build(B);
     const grid = B.grid.map((r) => r.slice());
     this.enemySpawns = []; this.props = []; this.crumbles = []; this.movers = []; this.projectiles = []; this.bolts = []; this.pshots = [];
+    this.matrix = null; // 第三章控制器（拉撒路残影 / 延迟力场），由关卡自己创建
     const occ = new Set(); let spawn = { cx: 3, cy: 3 }, crumbleGroup = 0, laserIdx = 0, chipIdx = 0;
     const lateProps = [];
     for (let y = 0; y < def.h; y++) {
@@ -137,10 +138,13 @@ const Game = {
         }
       }
     }
+    // 构建函数登记的额外敌人（例如第三章的死锁黑客：带多个瞬移点）
+    (B.spawns || []).forEach((s, i) => this.enemySpawns.push(Object.assign({ id: def.id + ':' + s.type + '#' + i }, s)));
     this.world = new World(grid, B.water);
     this.crumbles = this.crumbles.map((c) => { const o = new Crumble(c.x, c.y, c.g); this.world.solids.push(o.solid); return o; });
     this.movers = this.movers.map((m) => { const o = new Mover(m.x, m.y, m.c); this.world.solids.push(o.solid); return o; });
     this.props = lateProps.map((f) => f()).filter(Boolean);
+    for (const f of B.extra || []) { const o = f(this); if (o) this.props.push(o); } // 构建函数登记的物件（代码门、红外线等）
     this.tileCanvas = renderTiles(this.world, occ, def.theme.tiles);
     this.permDead = new Set();
     this.checkpoint = { x: spawn.cx * TILE + 6, y: (spawn.cy + 1) * TILE - 28 };
@@ -163,6 +167,7 @@ const Game = {
     if (this.boss) this.boss.stopSounds();
     if (this.boss && this.boss.mobs) this.enemies = this.enemies.filter((e) => !this.boss.mobs.includes(e));
     if (this.level.boss === 'incubator') { this.exhibit = null; this.boss = new Incubator(this, short); return; }
+    if (this.level.boss === 'mirror') { this.exhibit = null; this.boss = new MirrorLazarus(this, short); return; }
     this.exhibit = new ExhibitCase(this);
     this.boss = new Colossus(this, short);
   },
@@ -214,6 +219,7 @@ const Game = {
   },
   respawn() {
     for (const c of this.crumbles) c.reset();
+    for (const pr of this.props) if (pr.onRespawn) pr.onRespawn(this);
     this.projectiles = []; this.bolts = []; this.pshots = [];
     this.spawnEnemies();
     if (this.level.boss && this.boss && this.boss.active) this.setupBoss(true);
@@ -238,6 +244,11 @@ const Game = {
     if (ch === 2) {
       this.say(RADIO.incDefeat);
       setTimeout(() => Inventory.drop(9005), 1200);
+      return;
+    }
+    if (ch === 3) {
+      this.say(RADIO.mirrorDefeat);
+      setTimeout(() => Inventory.drop(9006), 1200);
       return;
     }
     this.say(RADIO.bossDefeat);
@@ -315,10 +326,11 @@ const Game = {
   updateTitle() {
     if (Input.hit('mu')) { this.menuSel = (this.menuSel + this.menu.length - 1) % this.menu.length; Sound.sfx.select(); }
     if (Input.hit('md')) { this.menuSel = (this.menuSel + 1) % this.menu.length; Sound.sfx.select(); }
-    // 测试用：数字键 1~0 跳到第一章，Shift + 数字跳到第二章
-    const shift = !!(Input.raw.ShiftLeft || Input.raw.ShiftRight);
+    // 测试用：数字键 1~0 跳到第一章，Shift + 数字跳到第二章，Alt + 数字跳到第三章
+    const shift = !!(Input.raw.ShiftLeft || Input.raw.ShiftRight), alt = !!(Input.raw.AltLeft || Input.raw.AltRight);
     for (let i = 0; i < 10; i++) if (Input.code('Digit' + ((i + 1) % 10))) {
-      const j = i + (shift ? 10 : 0); if (j >= LEVELS.length) return;
+      const ch = alt ? 3 : shift ? 2 : 1, base = chapterStart(ch), j = base + i;
+      if (base < 0 || j >= LEVELS.length || chapterOf(LEVELS[j]) !== ch) return;
       Sound.init(); Sound.sfx.confirm(); this.startLevel(j); return;
     }
     if (Input.hit('confirm') && this.stateT > 0.3) this.activateTitle();
@@ -522,6 +534,8 @@ const Game = {
   // ---------------- 绘制 ----------------
   render() {
     const ctx = this.ctx;
+    // 掉帧幽灵：画面也跟着「掉帧」（只画四分之一的帧）
+    if (this.state === 'play' && this.player && this.player.lagT > 0) { this.lagFrame = (this.lagFrame || 0) + 1; if (this.lagFrame % 4) return; }
     this.hot = [];
     ctx.setTransform(this.k, 0, 0, this.k, 0, 0);
     ctx.imageSmoothingEnabled = true;
@@ -548,7 +562,7 @@ const Game = {
     const sw = Math.min(VW, this.world.pw - sx), shh = Math.min(VH, this.world.ph - sy);
     if (sw > 0 && shh > 0) ctx.drawImage(this.tileCanvas, sx, sy, sw, shh, sx, sy, sw, shh);
     const vis = (o, m) => o.x + (o.w || 40) > cx - (m || 60) && o.x < cx + VW + (m || 60) && o.y + (o.h || 40) > cy - (m || 60) - 100 && o.y < cy + VH + (m || 60);
-    for (const pr of this.props) if (vis(pr)) pr.draw(ctx, this);
+    for (const pr of this.props) if (vis(pr)) pr.draw(ctx, this); // 第三章控制器也是 prop：残影、延迟力场在这里画
     for (const m of this.movers) if (vis(m)) m.draw(ctx, this);
     for (const cr of this.crumbles) if (vis(cr)) cr.draw(ctx, this);
     if (this.exhibit) this.exhibit.draw(ctx, this);
@@ -557,6 +571,7 @@ const Game = {
     if (this.pickup) this.pickup.draw(ctx, this);
     for (const e of this.enemies) if (e.alive && vis(e, 200)) e.draw(ctx, this);
     if (this.state !== 'dead' && !this.player.dead) this.player.draw(ctx, this);
+    if (this.matrix) this.matrix.drawOver(ctx, this);
     if (this.world.water) drawWater(ctx, this.world, view, this.t);
     this.drawAlarmLink(ctx);
     for (const pr of this.projectiles) pr.draw(ctx, this);
@@ -575,6 +590,7 @@ const Game = {
       g.addColorStop(0, 'rgba(255,0,0,0)'); g.addColorStop(1, `rgba(255,20,20,${a})`);
       ctx.fillStyle = g; ctx.fillRect(0, 0, VW, VH);
     }
+    if (this.matrix) this.matrix.drawScreen(ctx, this);
     ctx.drawImage(Art.scan, 0, 0);
     this.drawThreatMarkers(ctx, cx, cy);
     this.drawHUD(ctx);
@@ -653,9 +669,10 @@ const Game = {
     ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(dx, 12, 118, 44);
     ctx.font = '10px ' + MONO; ctx.fillStyle = 'rgba(200,200,200,0.7)'; ctx.fillText('DASH', dx + 10, 28);
     let col = '#6ff', label = 'READY';
-    if (p.dashLock > 0) { col = (this.t * 10) % 2 < 1 ? '#f33' : '#a11'; label = `ALARM ${p.dashLock.toFixed(1)}s`; }
+    if (p.lockT > 0) { col = (this.t * 10) % 2 < 1 ? '#f35' : '#a13'; label = `LOCK ${p.lockT.toFixed(1)}s`; }
+    else if (p.dashLock > 0) { col = (this.t * 10) % 2 < 1 ? '#f33' : '#a11'; label = `ALARM ${p.dashLock.toFixed(1)}s`; }
     else if (!p.canDash) { col = '#666'; label = 'USED'; }
-    ctx.fillStyle = col; ctx.fillRect(dx + 10, 34, 98 * (p.dashLock > 0 ? p.dashLock / 2 : 1), 6);
+    ctx.fillStyle = col; ctx.fillRect(dx + 10, 34, 98 * (p.lockT > 0 ? p.lockT / 1.5 : p.dashLock > 0 ? p.dashLock / 2 : 1), 6);
     ctx.font = 'bold 10px ' + MONO; ctx.fillText(label, dx + 48, 28);
     const wk = Inventory.weapon();
     if (wk) {
@@ -714,7 +731,7 @@ const Game = {
     const cx0 = Math.round(this.cam.x), cy0 = Math.round(this.cam.y), pad = 24;
     const behind = (o) => o.x - cx0 < x + w + pad && o.x + (o.w || 16) - cx0 > x - pad && o.y - cy0 < y + h + pad && o.y + (o.h || 16) - cy0 > y - pad;
     const threat = this.enemies.some((e) => e.alive && behind(e)) || this.projectiles.some((pr) => behind({ x: pr.x - 10, y: pr.y - 10, w: 20, h: 20 }))
-      || this.props.some((pr) => pr instanceof LaserGate && behind(pr)) || (this.boss && this.boss.active && behind(this.boss.body()))
+      || this.props.some((pr) => (pr instanceof LaserGate || pr.threat) && behind(pr)) || (this.boss && this.boss.active && behind(this.boss.body()))
       || behind({ x: this.player.x - 10, y: this.player.y - 10, w: this.player.w + 20, h: this.player.h + 20 });
     R.fade = approach(R.fade == null ? 1 : R.fade, threat ? 0.22 : 1, 0.08);
     const inA = Math.min(1, c.t * 6) * R.fade;
@@ -829,7 +846,7 @@ const Game = {
   renderTitle(ctx) {
     const t = this.t, view = { x: t * 18, y: 0 };
     const tch = this.titleCh || 1, TC = CHAPTERS[tch];
-    drawBackground(ctx, view, tch === 2 ? THEMES.hive : THEMES.hall, t);
+    drawBackground(ctx, view, TC.theme || THEMES.hall, t);
     ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(0, 0, VW, VH);
     // 展台上的拉撒路
     const px = 720, py = 400;

@@ -134,7 +134,7 @@ const Input = {
     this.loadBinds();
     const block = ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab', 'Backspace'];
     addEventListener('keydown', (e) => {
-      if (block.includes(e.code)) e.preventDefault();
+      if (block.includes(e.code) || (e.altKey && /^Digit\d$/.test(e.code))) e.preventDefault(); // Alt + 数字：标题界面跳第三章（测试用）
       if (this.capture && this.capture.kind === 'key') {
         e.preventDefault(); if (e.repeat) return;
         const c = this.capture;
