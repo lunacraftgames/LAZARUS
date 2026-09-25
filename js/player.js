@@ -42,6 +42,7 @@ class Player {
       lockT: 0, lockImmune: 0, lagT: 0, lagBuf: [], lagOut: null, ctl: {},
       gd: 1, prevTop: y, cubeRot: 0, frozen: false, // 第四章：重力方向（1 正常 / -1 反转）、一键模式、终局冻结
       lookUp: false, lookT: 0, atkUp: false,         // 向上瞄准
+      aimDown: false,                                // 空中向下瞄准
       h: PL.H, crouch: false,                        // 下蹲：碰撞箱降低 1/3
     });
   }
@@ -113,6 +114,7 @@ class Player {
     const ctl = this.ctl = { tick: g.t, mx, jumpHeld: I.down('jump'), jumped: null, dashed: false, dashDir: null };
     // 向上瞄准：抬头、举手 / 枪口朝上；站着不动一会儿，镜头会往上看
     this.lookUp = I.down('up') && !I.down('down');
+    this.aimDown = (!this.onGround || this.inWater) && I.down('down') && !I.down('up'); // 空中 / 水中按住 ↓：低头、枪口朝下（↓ + 攻击 = 下劈 / 朝下开枪）
     this.lookT = this.lookUp && this.onGround && Math.abs(this.vx) < 30 ? this.lookT + dt : 0;
     // ---- 第四章：重力方向。下面的物理全部在「本地坐标」里计算（vy > 0 = 朝自己脚下），最后再换回世界坐标 ----
     const gd = g.core ? g.core.gd : 1;
@@ -162,12 +164,12 @@ class Player {
     if (this.atkBuf > 0 && WP && this.atkCd <= 0 && !g.noAttack) {
       this.atkBuf = 0;
       if (WP.melee) {
-        this.atkDown = !this.onGround && I.down('down'); this.atkUp = !this.atkDown && I.down('up');
+        this.atkDown = (!this.onGround || this.inWater) && I.down('down'); this.atkUp = !this.atkDown && I.down('up');
         this.atkT = WP.active; this.atkCd = WP.cd; this.atkCdMax = WP.cd; this.atkHits = new Set(); this.atkSwing = WP.swing; this.atkSwingMax = WP.swing; this.atkHeavy = false;
         Sound.sfx.slash(); Input.rumble(0, 0.2, 50);
         if (WP.charge) this.chargeT = 0; // 巨像残刃：出刀后继续按住 = 蓄力
       } else {
-        const dir = I.down('up') ? 'up' : !this.onGround && I.down('down') ? 'down' : 'side';
+        const dir = I.down('up') ? 'up' : (!this.onGround || this.inWater) && I.down('down') ? 'down' : 'side';
         this.atkCd = WP.cd; this.atkCdMax = WP.cd;
         g.fireWeapon(this, wk, dir);
       }
@@ -434,15 +436,18 @@ class Player {
     ctx.fillStyle = tint || core; ctx.fillRect(-1, -19, 4, 4);
     // 肩甲 + 手臂
     const look = !tint && this.lookUp; // 向上瞄准：手臂举起、枪口朝上、头往上抬
-    const sw = look ? 0 : moving ? Math.sin(ph) * 3 : air ? -2 : 0;
+    const dn = !tint && !look && this.aimDown; // 空中向下瞄准：手臂垂下、枪口朝下、低头
+    const sw = look || dn ? 0 : moving ? Math.sin(ph) * 3 : air ? -2 : 0;
     ctx.fillStyle = c.b; ctx.fillRect(-3, -24, 9, 5);
     const ay = cr ? -2 : 0; // 下蹲：手臂和枪稍微抬起，和子弹射出的高度对齐
-    if (!look) { ctx.fillStyle = c.a; ctx.fillRect(1 + sw, -19 + ay, 4, 8); ctx.fillStyle = c.d; ctx.fillRect(1 + sw, -12 + ay, 4, 3); }
+    if (dn) { ctx.fillStyle = c.a; ctx.fillRect(3, -19, 4, 11); ctx.fillStyle = c.d; ctx.fillRect(3, -9, 4, 3); }
+    else if (!look) { ctx.fillStyle = c.a; ctx.fillRect(1 + sw, -19 + ay, 4, 8); ctx.fillStyle = c.d; ctx.fillRect(1 + sw, -12 + ay, 4, 3); }
     // 手里的枪（向上瞄准时画在头的前面，见下方）
     const drawGun = (kick) => {
-      if (look) { ctx.translate(9, -34 + kick); ctx.rotate(-Math.PI / 2); } else { ctx.translate(3 + sw - kick, -11 + ay); ctx.rotate(-kick * 0.08); }
+      if (look) { ctx.translate(9, -34 + kick); ctx.rotate(-Math.PI / 2); }
+      else if (dn) { ctx.translate(5, -8 - kick); ctx.rotate(Math.PI / 2); }
+      else { ctx.translate(3 + sw - kick, -11 + ay); ctx.rotate(-kick * 0.08); }
       if (curW === 'flintlock') {
-      const kick = Math.max(0, (this.atkCd || 0) - 0.8) * 20;
         ctx.fillStyle = '#5a3a20'; ctx.fillRect(-2, -1, 5, 5);            // 握把
         ctx.fillStyle = '#8a6a36'; ctx.fillRect(0, -3, 5, 3);             // 击锤座
         ctx.fillStyle = '#6a6e72'; ctx.fillRect(3, -3, 11, 2);            // 枪管
@@ -456,8 +461,8 @@ class Player {
     };
     const hasGun = curW === 'flintlock' || curW === 'sporeGun';
     if (hasGun && !look) { ctx.save(); drawGun(Math.max(0, (this.atkCd || 0) - 0.8) * 20); ctx.restore(); }
-    // 头（向上瞄准时绕脖子往上抬）
-    if (look) { ctx.save(); ctx.translate(0, -22); ctx.rotate(-0.4); ctx.translate(0, 22); }
+    // 头（向上瞄准时绕脖子往上抬，空中向下瞄准时低头）
+    if (look || dn) { ctx.save(); ctx.translate(0, -22); ctx.rotate(look ? -0.4 : 0.35); ctx.translate(0, 22); }
     ctx.fillStyle = c.e; ctx.fillRect(-6, -31, 13, 9);
     ctx.fillStyle = c.b; ctx.fillRect(-6, -31, 13, 2);
     const visor = tint || (this.dashLock > 0 ? '#f44' : c.visor);
@@ -466,6 +471,7 @@ class Player {
       ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = this.dashLock > 0 ? 'rgba(255,60,60,0.35)' : 'rgba(100,255,255,0.3)';
       ctx.fillRect(0, -30, 11, 7); ctx.globalCompositeOperation = 'source-over';
     }
+    if (dn) ctx.restore();
     if (look) {
       ctx.restore();
       // 举起的手臂：从肩膀伸到脸的前上方
