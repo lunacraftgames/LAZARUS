@@ -185,7 +185,7 @@ Object.assign(Game, {
     // ← → 在两列之间切换；已经在最左 / 最右列时切换章节
     if (Input.hit('ml')) { if (this.selSel >= half) { this.selSel -= half; Sound.sfx.select(); } else if (ci > 0) this.setSelCh(chs[ci - 1]); }
     if (Input.hit('mr')) { if (this.selSel < half && this.selSel + half < n) { this.selSel += half; Sound.sfx.select(); } else if (ci < chs.length - 1) this.setSelCh(chs[ci + 1]); }
-    if (Input.hit('confirm') && list[this.selSel]) { Sound.sfx.confirm(); this.startLevel(list[this.selSel].i); }
+    if (Input.hit('confirm') && list[this.selSel]) { Sound.sfx.confirm(); this.runFull = false; this.startLevel(list[this.selSel].i); } // 章节选择重玩不算完整周目
     if (Input.hit('pause') || Input.hit('back')) { Sound.sfx.select(); this.toTitle(); }
   },
   renderSelect(ctx) {
@@ -208,7 +208,7 @@ Object.assign(Game, {
       tx += w + 8;
     }
     ctx.fillStyle = 'rgba(255,210,120,0.8)'; ctx.font = '13px ' + FONT;
-    ctx.fillText((I18N.en ? tr(CHAPTERS[ch].name) + ' — ' : '') + tr('重玩时可使用所有已解锁的武器与能力。零重构通关可获得额外掉落。'), 70, 110);
+    ctx.fillText((I18N.en ? tr(CHAPTERS[ch].name) + ' — ' : '') + tr('重玩时可使用所有已解锁的武器与能力。零重构通关可获得额外掉落。') + tr(' · 难度：%{d}', { d: diffName(this.diff) }), 70, 110);
     const rw = ITEMDEFS.find((d) => d.chipReward === ch), cg = this.chipLogIn(ch), ct = chipTotal(ch);
     ctx.fillStyle = cg >= ct ? '#7f9' : 'rgba(255,210,120,0.8)';
     ctx.fillText(tr('本章记忆芯片收藏 %{a} / %{b}', { a: cg, b: ct }) + (rw ? tr(cg >= ct ? ' · 已获得专属外观「%{name}」' : ' · 集齐奖励：专属外观「%{name}」', { name: tr(rw.name) }) : '') + tr(Inventory.p.hiddenEnd ? ' · 隐藏结局已解锁' : ' · 四章全部集齐解锁隐藏结局'), 70, 130);
@@ -218,7 +218,7 @@ Object.assign(Game, {
       const sel = k === this.selSel, x = 70 + col * 420, y = 150 + row * 64, w = 400;
       ctx.fillStyle = sel ? 'rgba(120,255,230,0.12)' : 'rgba(255,255,255,0.04)'; ctx.fillRect(x, y, w, 52);
       if (sel) { ctx.fillStyle = '#7ff'; ctx.fillRect(x, y, 4, 52); }
-      this.addHot(x, y, w, 52, () => { Sound.sfx.confirm(); this.startLevel(i); }, () => { this.selSel = k; });
+      this.addHot(x, y, w, 52, () => { Sound.sfx.confirm(); this.runFull = false; this.startLevel(i); }, () => { this.selSel = k; });
       ctx.fillStyle = sel ? '#7ff' : '#c9b88a'; ctx.font = 'bold 16px ' + MONO; ctx.fillText(L.id, x + 18, y + 32);
       ctx.fillStyle = sel ? '#fff' : 'rgba(230,230,220,0.75)'; ctx.font = (sel ? 'bold ' : '') + '18px ' + FONT; ctx.fillText(L.name, x + 78, y + 26);
       ctx.fillStyle = 'rgba(200,190,160,0.55)'; ctx.font = '11px ' + MONO; if (!I18N.en) ctx.fillText(L.en, x + 78, y + 43);

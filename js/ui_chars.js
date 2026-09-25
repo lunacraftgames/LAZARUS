@@ -1,7 +1,7 @@
 'use strict';
 // ============================================================
 //  角色界面
-//  · mode 'new'：开始新的游戏前选择角色（唯一可以选角色的时机，选定后整个周目不能更换）
+//  · mode 'new'：开始新的游戏前选择角色和难度（唯一可以选的时机，选定后整个周目都不能更换）
 //  · mode 'view'：标题画面「角色」，只能查看
 // ============================================================
 Object.assign(Game, {
@@ -10,21 +10,40 @@ Object.assign(Game, {
     const cur = CHAR_ORDER.indexOf(mode === 'new' ? Inventory.p.char || 'lazarus' : this.charId);
     this.charSel = Math.max(0, cur); if (!charDef(CHAR_ORDER[this.charSel]).unlocked()) this.charSel = 0;
     this.charPrev = {};
+    // 难度：默认上次开新游戏选的（第一次是普通）
+    this.diffSel = Math.max(0, DIFFS.findIndex((d) => d.id === (mode === 'new' ? Inventory.p.diff || DIFF_DEFAULT : this.diff)));
+    if (!DIFFS[this.diffSel].unlocked()) this.diffSel = DIFFS.findIndex((d) => d.id === DIFF_DEFAULT);
     Sound.init(); Sound.sfx.select();
   },
   charPick(i) {
     const id = CHAR_ORDER[i], C = charDef(id);
     if (this.charMode !== 'new') { Sound.sfx.denied(); this.toastHint('角色只能在开始「新的游戏」时选择'); return; }
     if (!C.unlocked()) { Sound.sfx.denied(); this.toastHint(C.unlockText || '尚未解锁'); return; }
-    Sound.sfx.confirm(); this.beginRun(id);
+    Sound.sfx.confirm(); this.beginRun(id, DIFFS[this.diffSel].id);
   },
   setCharSel(i) { if (i !== this.charSel) { this.charSel = i; Sound.sfx.select(); } },
+  // 难度只能在新游戏开始前选；未解锁的难度选不了
+  setDiffSel(i) {
+    if (this.charMode !== 'new' || i === this.diffSel) return;
+    const D = DIFFS[i]; if (!D) return;
+    if (!D.unlocked()) { Sound.sfx.denied(); this.toastHint(D.unlockText || '尚未解锁'); return; }
+    this.diffSel = i; Sound.sfx.select();
+  },
+  stepDiff(dir) { // ← →：在已解锁的难度之间切换
+    if (this.charMode !== 'new') return;
+    const n = DIFFS.length; let i = this.diffSel;
+    for (let k = 0; k < n; k++) { i = (i + dir + n) % n; if (DIFFS[i].unlocked()) break; }
+    this.setDiffSel(i);
+  },
   // 选中哪个角色，就试听它的音乐风格（离开界面时 toTitle 会换回当前周目的角色）
   previewCharMusic() { const id = CHAR_ORDER[this.charSel]; applyCharMusic(charDef(id).unlocked() ? id : this.charId); },
   updateChars() {
     const n = CHAR_ORDER.length;
-    if (Input.hit('mu') || Input.hit('ml')) this.setCharSel((this.charSel + n - 1) % n);
-    if (Input.hit('md') || Input.hit('mr')) this.setCharSel((this.charSel + 1) % n);
+    // ↑ ↓ 选角色，← → 选难度（查看模式下 ← → 也用来翻角色）
+    if (Input.hit('mu') || (this.charMode !== 'new' && Input.hit('ml'))) this.setCharSel((this.charSel + n - 1) % n);
+    if (Input.hit('md') || (this.charMode !== 'new' && Input.hit('mr'))) this.setCharSel((this.charSel + 1) % n);
+    if (this.charMode === 'new' && Input.hit('ml')) this.stepDiff(-1);
+    if (this.charMode === 'new' && Input.hit('mr')) this.stepDiff(1);
     if (Input.hit('confirm') && this.stateT > 0.2) this.charPick(this.charSel);
     if (Input.hit('pause') || Input.hit('back')) { Sound.sfx.select(); this.toTitle(); }
     this.previewCharMusic();
@@ -40,14 +59,31 @@ Object.assign(Game, {
     p.onGround = !p.cling; p.vx = 120; p.run = this.t * 7; p.facing = 1;
     return p;
   },
+  drawDiffPicker(ctx, newRun) {
+    const x0 = 60, y0 = 318, bw = 122, bh = 30, gap = 6;
+    ctx.fillStyle = 'rgba(220,220,210,0.8)'; ctx.font = 'bold 14px ' + FONT;
+    ctx.fillText(newRun ? tr('难度') : tr('当前周目难度'), x0, y0);
+    const cur = newRun ? this.diffSel : Math.max(0, DIFFS.findIndex((d) => d.id === this.diff));
+    DIFFS.forEach((D, i) => {
+      const bx = x0 + (i % 2) * (bw + gap), by = y0 + 10 + Math.floor(i / 2) * (bh + gap), open = D.unlocked(), sel = i === cur;
+      ctx.fillStyle = sel ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.04)'; ctx.fillRect(bx, by, bw, bh);
+      if (sel) { ctx.strokeStyle = D.color; ctx.lineWidth = 2; ctx.strokeRect(bx + 1, by + 1, bw - 2, bh - 2); ctx.lineWidth = 1; }
+      ctx.fillStyle = !open ? 'rgba(160,160,160,0.45)' : sel ? D.color : 'rgba(220,220,210,0.75)'; ctx.font = (sel ? 'bold ' : '') + '14px ' + FONT; ctx.textAlign = 'center';
+      ctx.fillText((open ? '' : '🔒 ') + diffName(D.id), bx + bw / 2, by + 20); ctx.textAlign = 'left';
+      if (newRun) this.addHot(bx, by, bw, bh, () => this.setDiffSel(i));
+    });
+    const D = DIFFS[cur], open = D.unlocked(), ty = y0 + 10 + 2 * (bh + gap) + 16;
+    ctx.fillStyle = open ? 'rgba(230,225,205,0.85)' : 'rgba(255,160,120,0.8)'; ctx.font = '12px ' + FONT;
+    wrapText(ctx, open ? D.desc : tr(D.unlockText || '尚未解锁'), 2 * bw + gap).slice(0, 3).forEach((l, i) => ctx.fillText(l, x0, ty + i * 16));
+  },
   renderChars(ctx) {
     const newRun = this.charMode === 'new', t = this.t;
     drawBackground(ctx, { x: t * 10, y: 0 }, THEMES.hall, t);
     ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0, 0, VW, VH);
-    ctx.fillStyle = '#f2ead6'; ctx.font = 'bold 28px ' + FONT; ctx.fillText(newRun ? '选择角色' : '角色', 60, 64);
+    ctx.fillStyle = '#f2ead6'; ctx.font = 'bold 28px ' + FONT; ctx.fillText(newRun ? '选择角色与难度' : '角色', 60, 64);
     ctx.fillStyle = 'rgba(200,190,160,0.6)'; ctx.font = '12px ' + MONO; if (!I18N.en) ctx.fillText(newRun ? 'NEW GAME · SELECT YOUR UNIT' : 'UNITS', 60 + (newRun ? 128 : 72), 64);
     ctx.fillStyle = newRun ? 'rgba(255,210,120,0.85)' : 'rgba(200,200,200,0.6)'; ctx.font = '13px ' + FONT;
-    ctx.fillText(newRun ? '角色只能在这里（新的游戏开始前）选择，选定后整个周目都不能更换。' : '这里只能查看。角色只能在开始「新的游戏」时选择，游戏中途不能更换。', 60, 92);
+    ctx.fillText(newRun ? '角色和难度只能在这里（新的游戏开始前）选择，选定后整个周目都不能更换。' : '这里只能查看。角色和难度只能在开始「新的游戏」时选择，游戏中途不能更换。', 60, 92);
 
     // 左侧：角色列表
     CHAR_ORDER.forEach((id, i) => {
@@ -120,7 +156,9 @@ Object.assign(Game, {
       });
     }
 
-    const hint = newRun ? [{ k: 'select' }, '选择', { k: 'confirm' }, open ? '用这个角色开始' : '未解锁', { k: 'back' }, '返回'] : [{ k: 'select' }, '查看', { k: 'back' }, '返回'];
+    // 难度（左下）：新游戏时可以选；查看模式只显示当前周目的难度
+    this.drawDiffPicker(ctx, newRun);
+    const hint = newRun ? [{ k: 'select' }, '选择角色', { k: 'tab' }, '选择难度', { k: 'confirm' }, open ? '开始' : '未解锁', { k: 'back' }, '返回'] : [{ k: 'select' }, '查看', { k: 'back' }, '返回'];
     drawHintLine(ctx, 60, VH - 26, hint);
     if (newRun) { // 触屏 / 鼠标用的「开始」按钮
       const bw = 150, bx = VW - 96 - 24 - bw - 12, by = VH - 44;

@@ -176,7 +176,7 @@ const Inventory = {
       v: 1, abilities: {}, items: [], nextIid: 1,
       equipped: { paint: 2000, trail: 3000, rebuild: 4000, blade: 5000 },
       ch1Clear: false, playtime: 0, nextPlaytimeDrop: 30 * 60, seen: {},
-      chipLog: {}, chipDone: {}, hiddenEnd: false, char: 'lazarus', charSeen: {}, // char = 最近一次开新游戏选的角色（章节选择重玩时使用） // 记忆芯片收藏（跨周目累计）、已发放的章节收藏奖励、隐藏结局是否解锁
+      chipLog: {}, chipDone: {}, hiddenEnd: false, char: 'lazarus', charSeen: {}, diff: 'normal', diffClear: {}, // diff = 最近一次开新游戏选的难度；diffClear = 已通关的难度 // char = 最近一次开新游戏选的角色（章节选择重玩时使用） // 记忆芯片收藏（跨周目累计）、已发放的章节收藏奖励、隐藏结局是否解锁
     }, d || {});
     if (this.backend.sync) this.backend.sync();
   },

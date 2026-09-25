@@ -10,7 +10,7 @@ const Game = {
   particles: new Particles(), boss: null, exhibit: null,
   cam: { x: 0, y: 0, shake: 0 },
   checkpoint: null, permDead: new Set(),
-  deaths: 0, chips: new Set(), runTime: 0, levelT: 0, charId: 'lazarus',
+  deaths: 0, chips: new Set(), runTime: 0, levelT: 0, charId: 'lazarus', diff: DIFF_DEFAULT, runFull: false, radioHeard: new Set(),
   radio: { queue: [], cur: null, glitch: 0 },
   toasts: [], freezeT: 0, flashA: 0, flashC: '#fff', alarmFlash: 0, hudDeny: 0,
   hot: [], menuSel: 0, pauseSel: 0, storyIdx: 0, storyT: 0, cardT: 0, deadT: 0, clearT: 0, endT: 0, bossDoneT: -1,
@@ -42,17 +42,24 @@ const Game = {
     const s = Save.load();
     if (s) { this.deaths = s.deaths || 0; this.chips = new Set(s.chips || []); this.runTime = s.time || 0; }
     this.charId = (s && s.char) || Inventory.p.char || 'lazarus';
+    this.loadRunDiff(s);
     for (const id of this.chips) Inventory.p.chipLog[id] = 1; // 旧存档：把本周目已收集的芯片计入收藏
     this.checkChipRewards();
     this.toTitle();
     let last = performance.now(), acc = 0;
     const STEP = 1 / 120;
+    const seen = new Set();
     const frame = (now) => {
+      requestAnimationFrame(frame); // 先排好下一帧：就算这一帧出错，游戏也不会整个卡死
       let dt = (now - last) / 1000; last = now; if (dt > 0.1) dt = 0.1;
       acc += dt;
-      while (acc >= STEP) { this.update(STEP); acc -= STEP; }
-      this.render();
-      requestAnimationFrame(frame);
+      try {
+        while (acc >= STEP) { this.update(STEP); acc -= STEP; }
+        this.render();
+      } catch (e) {
+        acc = 0;
+        if (!seen.has(e.message)) { seen.add(e.message); console.error(e); } // 同一个错误只记一次
+      }
     };
     requestAnimationFrame(frame);
   },
@@ -86,7 +93,7 @@ const Game = {
   storyCps() { return I18N.en ? 48 : 22; },
   toast(title, text) { this.toasts.push({ title: tr(title), text: tr(text), t: 0 }); },
   toastHint(text) { if (!this.hintT || this.t - this.hintT > 4) { this.hintT = this.t; this.toasts.push({ title: tr('提示'), text: tr(text), t: 0, short: true }); } },
-  persist() { Inventory.save(); Save.save({ level: this.levelIndex, deaths: this.deaths, chips: [...this.chips], time: this.runTime, char: this.charId }); },
+  persist() { Inventory.save(); Save.save({ level: this.levelIndex, deaths: this.deaths, chips: [...this.chips], time: this.runTime, char: this.charId, diff: this.diff, full: this.runFull, heard: [...this.radioHeard] }); },
 
   // ---------------- 状态切换 ----------------
   toTitle() {
@@ -96,10 +103,11 @@ const Game = {
     // 当前周目的角色：继续游戏用存档里的角色；没有存档时（章节选择重玩）用最近一次开新游戏选的角色
     this.charId = (s && s.char) || Inventory.p.char || 'lazarus';
     if (!charDef(this.charId).unlocked()) this.charId = 'lazarus';
+    this.loadRunDiff(s);
     applyCharMusic(this.charId);
     const m = [];
     const cont = s && s.level > 0 && s.level < LEVELS.length;
-    if (cont) m.push({ label: `继续游戏 · ${LEVELS[s.level].id} ${LEVELS[s.level].name}`, act: 'continue', lv: s.level });
+    if (cont) m.push({ label: `继续游戏 · ${LEVELS[s.level].id} ${LEVELS[s.level].name} · ${diffName((s && s.diff) || 'easy')}`, act: 'continue', lv: s.level });
     m.push({ label: cont ? '新的游戏' : '开始游戏', act: 'new' });
     if (Inventory.p.ch1Clear) m.push({ label: '章节选择', act: 'select' });
     this.titleCh = cont ? chapterOf(LEVELS[s.level]) : 1;
@@ -113,8 +121,25 @@ const Game = {
   },
   // 新的游戏：先选角色（只有这里能选，整个周目不能更换），再播开场剧情
   newGame() { this.openChars('new'); },
-  beginRun(charId) {
-    this.charId = charId; Inventory.p.char = charId; Inventory.save(); applyCharMusic(charId);
+  // 完整周目打完最终章：记录通关这个难度，解锁下一个难度
+  clearDifficulty() {
+    if (!this.runFull) return;
+    const P = Inventory.p; P.diffClear = P.diffClear || {};
+    const first = !P.diffClear[this.diff]; P.diffClear[this.diff] = true; Inventory.save();
+    const nx = DIFF_NEXT[this.diff];
+    if (first && nx) this.toasts.push({ title: tr('新难度解锁 · %{d}', { d: diffName(nx) }), text: tr('开始「新的游戏」时可以选择。'), t: 0, color: diffDef(nx).color });
+  },
+  // 周目的难度：继续游戏用存档里的难度；没有存档时（章节选择重玩）用最近一次开新游戏选的难度
+  loadRunDiff(s) {
+    this.diff = s ? s.diff || 'easy' : Inventory.p.diff || DIFF_DEFAULT; // 加入难度之前的旧存档：原来的玩法就是简单难度（有存档点）
+    if (!diffDef(this.diff).unlocked()) this.diff = DIFF_DEFAULT;
+    this.runFull = !!(s && s.full);
+    this.radioHeard = new Set((s && s.heard) || []);
+  },
+  beginRun(charId, diff) {
+    this.charId = charId; Inventory.p.char = charId; applyCharMusic(charId);
+    this.diff = diffDef(diff || DIFF_DEFAULT).id; Inventory.p.diff = this.diff; Inventory.save();
+    this.runFull = true; this.radioHeard = new Set(); // 从 1-1 开始的完整周目：打完最终章才算「通关」这个难度
     this.deaths = 0; this.chips = new Set(); this.runTime = 0; Save.clear();
     this.playStory(1);
   },
@@ -125,7 +150,9 @@ const Game = {
   },
   get chapter() { return this.level ? chapterOf(this.level) : 1; },
 
-  startLevel(i, short) {
+  // restart = 难度规则下被摧毁后重新载入关卡：跳过关卡标题卡和 Boss 登场，已经听过的无线电不再重播
+  startLevel(i, short, restart) {
+    const sameLevel = restart && i === this.levelIndex;
     this.levelIndex = i;
     const def = LEVELS[i]; this.level = def;
     const B = makeBuilder(def.w, def.h); def.build(B);
@@ -145,7 +172,7 @@ const Game = {
           case 'S': spawn = { cx: x, cy: y }; break;
           case 'C': if (!(x > 0 && B.grid[y][x - 1] === 'C')) crumbleGroup++; this.crumbles.push({ x, y, g: crumbleGroup }); break;
           case 'T': lateProps.push(() => new Spring(x, y)); break;
-          case 'K': lateProps.push(() => new Checkpoint(x, y)); break;
+          case 'K': if (this.diff === 'easy') lateProps.push(() => new Checkpoint(x, y)); break; // 只有简单难度有存档点
           case 'E': lateProps.push(() => new Exit(x, y)); break;
           case 'o': { const id = def.id + '#' + chipIdx++; if (!this.chips.has(id)) lateProps.push(() => new Chip(x, y, id)); break; }
           case 'L': { const idx = laserIdx++; lateProps.push(() => new LaserGate(x, y, idx, this.world)); break; }
@@ -170,12 +197,12 @@ const Game = {
     Inventory.charWeapon = charDef(this.charId).weapon || null; applyCharMusic(this.charId);
     this.player = new Player(this.checkpoint.x, this.checkpoint.y, this.charId);
     this.player.spawnT = 0.45;
-    this.radioTriggers = def.radio.map((r) => Object.assign({ fired: false }, r));
+    this.radioTriggers = def.radio.map((r, k) => Object.assign({ fired: this.radioHeard.has(def.id + '#' + k), key: def.id + '#' + k }, r));
     this.radio.queue = []; this.radio.cur = null;
-    this.levelT = 0; this.cardT = 0; this.bossDoneT = -1; this.bossOverloads = 0; this.alarmSrc = null; this.levelDeaths0 = this.deaths; this.pickup = null;
+    this.levelT = 0; this.cardT = restart ? 9 : 0; this.bossDoneT = -1; this.bossOverloads = 0; this.alarmSrc = null; if (!sameLevel) this.levelDeaths0 = this.deaths; this.pickup = null;
     if (this.boss) this.boss.stopSounds();
     this.boss = null; this.exhibit = null;
-    if (def.boss) this.setupBoss(!!short);
+    if (def.boss) this.setupBoss(!!short || !!restart);
     this.spawnEnemies();
     this.state = 'play'; this.stateT = 0;
     this.snapCamera();
@@ -262,6 +289,15 @@ const Game = {
     this.persist();
   },
   respawn() {
+    // 普通 / 困难 / 噩梦：没有存档点，整关重新载入（困难回到本章第一关，噩梦回到 1-1）
+    const target = diffRestartLevel(this.diff, this.levelIndex);
+    if (target != null) {
+      if (target !== this.levelIndex) this.toast(tr('重构点：%{lv}', { lv: LEVELS[target].id + ' ' + tr(LEVELS[target].name) }), tr(this.diff === 'hard' ? '困难难度：被摧毁后从本章第一关重新开始。' : '噩梦难度：被摧毁后从 1-1 重新开始。'));
+      this.startLevel(target, true, true);
+      this.player.spawnT = 0.45; Sound.sfx.respawn();
+      this.particles.burst(this.player.cx, this.player.cy, 20, { color: ['#7ff', '#fff'], smin: 20, smax: 120, lmin: 0.3, lmax: 0.6, add: true });
+      return;
+    }
     for (const c of this.crumbles) c.reset();
     for (const pr of this.props) if (pr.onRespawn) pr.onRespawn(this);
     this.projectiles = []; this.bolts = []; this.pshots = [];
@@ -278,7 +314,7 @@ const Game = {
     if (this.deaths === this.levelDeaths0) { this.toast('零重构通关', '一次都没有被摧毁——获得额外补给。'); Inventory.drop(9003); }
     else if (Math.random() < 0.25) Inventory.drop(9002);
     this.levelIndex = Math.min(this.levelIndex + 1, LEVELS.length - 1);
-    Save.save({ level: this.levelIndex, deaths: this.deaths, chips: [...this.chips], time: this.runTime, char: this.charId });
+    Save.save({ level: this.levelIndex, deaths: this.deaths, chips: [...this.chips], time: this.runTime, char: this.charId, diff: this.diff, full: this.runFull, heard: [...this.radioHeard] });
   },
   onBossDefeated() {
     const ch = this.chapter;
@@ -385,7 +421,7 @@ const Game = {
     for (let i = 0; i < 10; i++) if (Input.code('Digit' + ((i + 1) % 10))) {
       const ch = alt && shift ? 4 : alt ? 3 : shift ? 2 : 1, base = chapterStart(ch), j = base + i;
       if (base < 0 || j >= LEVELS.length || chapterOf(LEVELS[j]) !== ch) return;
-      Sound.init(); Sound.sfx.confirm(); this.startLevel(j); return;
+      Sound.init(); Sound.sfx.confirm(); this.runFull = false; this.startLevel(j); return;
     }
     if (Input.hit('confirm') && this.stateT > 0.3) this.activateTitle();
   },
@@ -433,7 +469,7 @@ const Game = {
     Sound.sfx.confirm();
     const next = this.endCh + 1;
     if (CHAPTERS[next] && chapterStart(next) >= 0) {
-      Save.save({ level: chapterStart(next), deaths: this.deaths, chips: [...this.chips], time: this.runTime, char: this.charId });
+      Save.save({ level: chapterStart(next), deaths: this.deaths, chips: [...this.chips], time: this.runTime, char: this.charId, diff: this.diff, full: this.runFull, heard: [...this.radioHeard] });
       this.playStory(next);
       return;
     }
@@ -547,8 +583,9 @@ const Game = {
         const ch = this.chapter;
         const toEnd = () => {
           this.state = 'end'; this.stateT = 0; this.endT = 0; this.endCh = ch;
+          if (CHAPTERS[ch].end && CHAPTERS[ch].end.final) this.clearDifficulty();
           const next = chapterStart(ch + 1);
-          Save.save({ level: next > 0 ? next : 0, deaths: this.deaths, chips: [...this.chips], time: this.runTime, char: this.charId });
+          Save.save({ level: next > 0 ? next : 0, deaths: this.deaths, chips: [...this.chips], time: this.runTime, char: this.charId, diff: this.diff, full: this.runFull, heard: [...this.radioHeard] });
         };
         this.bossDoneT = -1;
         // 最终章：先播结局剧情；集齐全部记忆芯片时紧接着播隐藏结局
@@ -575,7 +612,7 @@ const Game = {
       if (r.fired) continue;
       const okx = r.x == null || p.cx > r.x * TILE;
       const oky = r.y == null || p.cy < r.y * TILE;
-      if (okx && oky) { r.fired = true; this.say(r.lines); }
+      if (okx && oky) { r.fired = true; if (r.key) this.radioHeard.add(r.key); this.say(r.lines); }
     }
   },
   updateRadio(dt) {
@@ -783,6 +820,7 @@ const Game = {
     ctx.font = '11px ' + FONT; ctx.fillStyle = 'rgba(200,220,220,0.7)'; ctx.fillText('重构次数', VW - 210, 29); ctx.fillText('记忆芯片', VW - 100, 29);
     ctx.font = 'bold 16px ' + MONO; ctx.fillStyle = '#7ff'; ctx.fillText(String(this.deaths), VW - 210, 49);
     ctx.fillStyle = '#fc6'; ctx.fillText(`${chipsIn(this.chips, this.chapter)}/${chipTotal(this.chapter)}`, VW - 100, 49);
+    ctx.font = 'bold 10px ' + FONT; ctx.fillStyle = diffDef(this.diff).color; ctx.textAlign = 'right'; ctx.fillText(diffName(this.diff), VW - 18, 64); ctx.textAlign = 'left'; // 当前难度
     // Boss 血条
     const b = this.boss;
     if (b && !(b.state === 'intro') && !b.dead) {
@@ -1003,7 +1041,7 @@ const Game = {
     ctx.globalAlpha = Math.min(1, Math.max(0, t - 0.8));
     const mm = Math.floor(this.runTime / 60), ss = Math.floor(this.runTime % 60);
     ctx.font = '18px ' + FONT; ctx.fillStyle = '#e6dcc0';
-    ctx.fillText(`重构次数　${this.deaths}`, VW / 2, 250);
+    ctx.fillText(`重构次数　${this.deaths}　·　${diffName(this.diff)}`, VW / 2, 250);
     ctx.fillText(`记忆芯片　${chipsIn(this.chips, ch)} / ${chipTotal(ch)}`, VW / 2, 282);
     ctx.fillText(tr('用时　%{m}分%{s}秒', { m: mm, s: String(ss).padStart(2, '0') }), VW / 2, 314);
     if (E.reward && Inventory.ability(E.reward[0])) { ctx.fillStyle = '#fc6'; ctx.font = 'bold 15px ' + FONT; ctx.fillText(charText(E.reward[1]), VW / 2, 346); }
