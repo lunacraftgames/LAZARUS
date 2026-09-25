@@ -18,7 +18,7 @@
 //  站立位置约定：地面站立行 13，天花板（反转）站立行 3（天花板为 0~2 行）
 // ============================================================
 
-const C4 = { OFFLINE: 5, TRACK_SPEED: 45, CUBE_RUN: 310, CUBE_JUMP: 760, CUBE_GRAV: 2600 };
+const C4 = { OFFLINE: 5, TRACK_SPEED: 65, CUBE_RUN: 310, CUBE_JUMP: 760, CUBE_GRAV: 2600 };
 SPEAKERS.OMNI = 'Ω-MIND · 万脑';
 
 // ---------------- 主题与美术：极简黑白灰 + 悬浮的金色几何体 ----------------
@@ -143,7 +143,7 @@ TILESETS.core = {
 const _makeBuilderCh3 = makeBuilder;
 makeBuilder = function (w, h) { // eslint-disable-line no-func-assign
   const B = _makeBuilderCh3(w, h);
-  return Object.assign(B, { shift(x0, x1, mode) { this.extra.push(() => new ShiftZone(x0, x1, mode, h)); } });
+  return Object.assign(B, { shift(x0, x1, mode, speed) { this.extra.push(() => new ShiftZone(x0, x1, mode, h, speed)); } });
 };
 // 第四章关卡的通用框架：左右墙、天花板 0~2 行、地面 14~17 行
 function frame4(B, W, H) {
@@ -193,6 +193,7 @@ class CoreCtl {
     const p = g.player;
     if (!this.spawn) this.spawn = { x: g.checkpoint.x, y: g.checkpoint.y };
     if (g.state === 'play') { this.t += dt; if (this.offlineT > 0) this.offlineT -= dt; }
+    if (this.offlineT > 0 && p) p.dashLock = Math.max(p.dashLock, this.offlineT); // 断网：冲刺（及各角色的冲刺键能力）失灵
     if (g.state === 'dead' && this.offlineT > 0) { this.hardReset = true; this.offlineT = 0; }
     // 重力
     let gd = this.manual;
@@ -203,12 +204,13 @@ class CoreCtl {
       if (p && !p.dead) g.particles.burst(p.cx, p.cy, 14, { color: gd < 0 ? ['#f35', '#fff'] : ['#58f', '#fff'], smin: 60, smax: 200, lmin: 0.2, lmax: 0.5, add: true });
       if (!g.gravHinted) { g.gravHinted = true; g.toastHint(gd < 0 ? '猩红 = 重力反转：你会飞上天花板，在天花板上照常奔跑和跳跃' : '深蓝 = 重力恢复正常'); }
     }
-    if (this.warn > 0 && g.state === 'play') { this.beep -= dt; if (this.beep <= 0) { this.beep = 0.25; Sound.sfx.gwarn(); } } else this.beep = 0;
+    if (this.warn > 0 && g.state === 'play' && this.offlineT <= 0) { this.beep -= dt; if (this.beep <= 0) { this.beep = 0.25; Sound.sfx.gwarn(); } } else this.beep = 0;
     // 维度重写
     if (!this.zones) this.zones = g.props.filter((pr) => pr instanceof ShiftZone);
     if (g.state === 'play' && p && !p.dead) {
       const z = this.zones.find((zz) => p.cx >= zz.x0 && p.cx < zz.x1);
       const mode = z ? z.mode : 'normal';
+      p.cubeRun = (z && z.speed) || C4.CUBE_RUN; // 一键模式的后半段可以更快
       if (mode !== this.mode) {
         this.mode = mode; this.modeT = 0; Sound.sfx.shift(); g.flash(0.5, '#fff'); g.shake(3);
         if (mode === 'cube' && !g.cubeHinted) { g.cubeHinted = true; g.toastHint(Input.fmt('降维：一键模式——自动向前跑，只能按 {jump} 跳（按住会连续跳）。撞到墙面即死')); }
@@ -244,13 +246,15 @@ class CoreCtl {
       ctx.fillStyle = red ? '#ff4a5e' : '#6a9cff'; ctx.fillRect(x, y, 4, 44);
       ctx.font = '10px ' + MONO; ctx.fillStyle = 'rgba(200,200,200,0.7)'; ctx.fillText('GRAVITY', x + 12, y + 16);
       ctx.font = 'bold 13px ' + FONT; ctx.fillStyle = red ? '#ff6a7a' : '#8ab4ff'; ctx.fillText(red ? '▲ 反转' : '▼ 正常', x + 12, y + 36);
-      if (this.left !== Infinity) {
+      if (this.left !== Infinity && this.offlineT > 0) { // 断网：倒计时丢失
+        ctx.textAlign = 'right'; ctx.font = 'bold 12px ' + MONO; ctx.fillStyle = (g.t * 6) % 2 < 1 ? '#f55' : '#822'; ctx.fillText('--.-s', x + 158, y + 22); ctx.textAlign = 'left';
+      } else if (this.left !== Infinity) {
         const k = this.left / (red ? this.cycle[1] : this.cycle[0]);
         ctx.fillStyle = 'rgba(255,255,255,0.1)'; ctx.fillRect(x + 80, y + 30, 78, 5);
         ctx.fillStyle = w > 0 && (g.t * 8) % 2 < 1 ? '#fff' : red ? '#ff4a5e' : '#6a9cff'; ctx.fillRect(x + 80, y + 30, 78 * clamp(k, 0, 1), 5);
         ctx.textAlign = 'right'; ctx.font = 'bold 12px ' + MONO; ctx.fillText(this.left.toFixed(1) + 's', x + 158, y + 22); ctx.textAlign = 'left';
       }
-      if (w > 0) { // 切换预警：屏幕边缘闪另一种颜色
+      if (w > 0 && this.offlineT <= 0) { // 切换预警：屏幕边缘闪另一种颜色
         const a = (1 - w) * 0.35 * ((g.t * 8) % 2 < 1 ? 1 : 0.3);
         const gr = ctx.createRadialGradient(VW / 2, VH / 2, VH * 0.4, VW / 2, VH / 2, VW * 0.62);
         gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, red ? `rgba(60,120,255,${a})` : `rgba(255,50,70,${a})`);
@@ -262,7 +266,7 @@ class CoreCtl {
       ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(VW / 2 - 230, VH - 86, 460, 44);
       ctx.fillStyle = '#ff5a5a'; ctx.font = 'bold 15px ' + MONO; ctx.textAlign = 'center';
       ctx.fillText(`LAZARUS PROTOCOL · OFFLINE ${this.offlineT.toFixed(1)}s`, VW / 2, VH - 66);
-      ctx.font = '12px ' + FONT; ctx.fillText('拉撒路协议断网：此时被摧毁将无法在存档点重构', VW / 2, VH - 49); ctx.textAlign = 'left';
+      ctx.font = '12px ' + FONT; ctx.fillText(g.diff === 'easy' ? '拉撒路协议断网：冲刺失灵、重力倒计时丢失 · 此时被摧毁将无法在存档点重构' : '拉撒路协议断网：冲刺失灵、重力倒计时丢失', VW / 2, VH - 49); ctx.textAlign = 'left';
     }
   }
   // 画在 HUD 之后：攻击被剥夺时盖住武器格子
@@ -277,10 +281,11 @@ class CoreCtl {
 
 // 降维扫描区域
 class ShiftZone {
-  constructor(x0, x1, mode, h) { this.mode = mode; this.x0 = x0 * TILE; this.x1 = (x1 + 1) * TILE; this.x = this.x0 - 30; this.y = 0; this.w = this.x1 - this.x0 + 60; this.h = h * TILE; }
+  constructor(x0, x1, mode, h, speed) { this.mode = mode; this.speed = speed || 0; this.x0 = x0 * TILE; this.x1 = (x1 + 1) * TILE; this.x = this.x0 - 30; this.y = 0; this.w = this.x1 - this.x0 + 60; this.h = h * TILE; }
   update() {}
   draw(ctx, g) {
-    for (const [xx, label] of [[this.x0, this.mode === 'cube' ? '降维扫描 · 一键模式' : '降维扫描 · 线框视界'], [this.x1, '维度恢复']]) {
+    const marks = this.speed ? [[this.x0, '维度压缩 · 加速']] : [[this.x0, this.mode === 'cube' ? '降维扫描 · 一键模式' : '降维扫描 · 线框视界'], [this.x1, '维度恢复']];
+    for (const [xx, label] of marks) {
       ctx.globalCompositeOperation = 'lighter';
       const gr = ctx.createLinearGradient(xx - 24, 0, xx + 24, 0); gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(0.5, 'rgba(255,240,200,0.35)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
       ctx.fillStyle = gr; ctx.fillRect(xx - 24, 0, 48, this.h);
@@ -297,7 +302,7 @@ class ShiftZone {
 Player.prototype.updateCube = function (dt, g, I, ctl) {
   const W = g.world, gd = this.gd;
   let vy = this.vy * gd;
-  this.vx = C4.CUBE_RUN; this.facing = 1; this.dashT = 0; this.atkT = 0;
+  this.vx = this.cubeRun || C4.CUBE_RUN; this.facing = 1; this.dashT = 0; this.atkT = 0;
   vy = Math.min(vy + C4.CUBE_GRAV * dt, 900);
   if (this.onGround && I.down('jump')) { vy = -C4.CUBE_JUMP; this.onGround = false; Sound.sfx.cubeJump(); ctl.jumped = 'ground'; }
   const hx = W.moveX(this, this.vx * dt);
@@ -460,9 +465,16 @@ class MagDrifter {
       const nx = this.x + speed * dt, edgeX = speed > 0 ? nx + this.w + 2 : nx - 2;
       const supY = this.side === 'ceil' ? this.y - 2 : this.y + this.h + 2;
       if (!W.supportAt(edgeX, supY) || W.pointSolid(edgeX, this.y + this.h / 2)) this.vx = -this.vx; else this.x = nx;
-      if (this.side === 'ceil' && g.state === 'play' && Math.abs(p.cx - (this.x + 13)) < 260 && p.cy > this.y) {
+      // 天花板上朝下打；落到地面后朝上打（重力反转后的天花板也不安全）。每隔一轮是扇形三连发
+      const ceil = this.side === 'ceil';
+      if (g.state === 'play' && Math.abs(p.cx - (this.x + 13)) < 260 && (ceil ? p.cy > this.y : p.cy < this.y)) {
         this.shotT -= dt;
-        if (this.shotT <= 0) { this.shotT = 2.2; g.projectiles.push(new MagShot(this.x + 13, this.y + this.h)); Sound.sfx.magShot(); }
+        if (this.shotT <= 0) {
+          this.shotT = 1.4; this.volley = (this.volley || 0) + 1;
+          const sy = ceil ? this.y + this.h : this.y, dir = ceil ? 1 : -1;
+          for (const vx of this.volley % 2 ? [0] : [-110, 0, 110]) g.projectiles.push(new MagShot(this.x + 13, sy, vx, dir * 420));
+          Sound.sfx.magShot();
+        }
       }
     }
   }
@@ -482,9 +494,11 @@ class MagDrifter {
   }
 }
 class MagShot {
-  constructor(x, y) { this.x = x; this.y = y; this.vy = 300; this.dead = false; }
+  constructor(x, y, vx, vy) { this.x = x; this.y = y; this.vx = vx || 0; this.vy = vy || 420; this.dead = false; this.t = 0; }
   update(dt, g) {
-    this.y += this.vy * dt;
+    this.x += this.vx * dt; this.y += this.vy * dt; this.t += dt;
+    if (this.t > 0.1 && g.world.pointSolid(this.x, this.y)) { this.dead = true; return; }
+    if (this.t > 3) { this.dead = true; return; }
     if (g.world.pointSolid(this.x, this.y) || this.y > g.world.ph) { this.dead = true; g.particles.burst(this.x, this.y, 5, { color: ['#f35', '#fff'], shape: 'spark', smin: 40, smax: 120, lmin: 0.1, lmax: 0.2, add: true }); return; }
     if (g.state === 'play' && Math.abs(g.player.cx - this.x) < 9 && Math.abs(g.player.cy - this.y) < 15) { this.dead = true; g.killPlayer('shot'); }
   }
@@ -492,7 +506,8 @@ class MagShot {
   draw(ctx) { ctx.fillStyle = '#f35'; ctx.fillRect(this.x - 2, this.y - 8, 4, 12); ctx.fillStyle = '#fff'; ctx.fillRect(this.x - 1, this.y, 2, 4); }
 }
 
-// ---------------- 2. 维度撕裂者：画出发光的「切线向量」，3 秒后变成实体激光 ----------------
+// ---------------- 2. 维度撕裂者：画出发光的「切线向量」，2 秒后变成实体激光（瞄准你接下来的位置） ----------------
+const VEC_T = 2;
 class VectorShredder {
   constructor(cx, cy) { this.ax = cx * TILE + 16; this.ay = cy * TILE + 16; this.w = 30; this.h = 30; this.x = this.ax - 15; this.y = this.ay - 15; this.t = Math.random() * 2; this.cd = 1.5 + Math.random(); this.vecs = []; this.alive = true; this.colors = ['#e6c56a', '#fff6d8']; }
   update(dt, g) {
@@ -500,16 +515,18 @@ class VectorShredder {
     this.x = this.ax - 15 + Math.sin(this.t * 0.8) * 20; this.y = this.ay - 15 + Math.sin(this.t * 1.3) * 10;
     for (const v of this.vecs) {
       v.t += dt;
-      if (v.t >= 3 && !v.fired) { v.fired = true; Sound.sfx.vectorFire(); g.shake(2); }
+      if (v.t >= VEC_T && !v.fired) { v.fired = true; Sound.sfx.vectorFire(); g.shake(2); }
       if (v.fired && g.state === 'play' && segHitsRect(v, p.hurt())) g.killPlayer('laser');
     }
-    this.vecs = this.vecs.filter((v) => v.t < 3.8);
+    this.vecs = this.vecs.filter((v) => v.t < VEC_T + 0.8);
     const near = Math.abs(p.cx - this.ax) < 560 && Math.abs(p.cy - this.ay) < 400;
     this.cd -= dt;
     if (near && this.cd <= 0 && g.state === 'play') {
-      this.cd = 4.2; Sound.sfx.vector();
-      for (let i = 0; i < 2; i++) {
-        const a = pick([0, Math.PI / 4, Math.PI / 2, Math.PI * 3 / 4]) + rand(-0.12, 0.12), mx = p.cx + rand(-50, 50), my = p.cy + rand(-40, 40), L = 300;
+      this.cd = 3; Sound.sfx.vector();
+      const angs = [0, Math.PI / 4, Math.PI / 2, Math.PI * 3 / 4].sort(() => Math.random() - 0.5);
+      const ax = p.cx + clamp(p.vx, -300, 300) * 0.6, ay = p.cy; // 预判你的走位
+      for (let i = 0; i < 3; i++) {
+        const a = angs[i] + rand(-0.12, 0.12), mx = ax + rand(-50, 50), my = ay + rand(-40, 40), L = 300;
         this.vecs.push({ x1: mx - Math.cos(a) * L, y1: my - Math.sin(a) * L, x2: mx + Math.cos(a) * L, y2: my + Math.sin(a) * L, t: 0, fired: false });
       }
     }
@@ -518,12 +535,12 @@ class VectorShredder {
   draw(ctx, g) {
     for (const v of this.vecs) {
       if (!v.fired) {
-        const k = v.t / 3;
+        const k = v.t / VEC_T;
         ctx.strokeStyle = `rgba(230,197,106,${0.25 + k * 0.5})`; ctx.lineWidth = 1 + k; ctx.setLineDash([10, 8]); ctx.lineDashOffset = -g.t * 30;
         ctx.beginPath(); ctx.moveTo(v.x1, v.y1); ctx.lineTo(v.x2, v.y2); ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0;
         ctx.fillStyle = 'rgba(255,240,200,0.9)'; ctx.beginPath(); ctx.arc(lerp(v.x1, v.x2, k), lerp(v.y1, v.y2, k), 3, 0, 7); ctx.fill(); // 描线进度
       } else {
-        const a = Math.min(1, (3.8 - v.t) * 3);
+        const a = Math.min(1, (VEC_T + 0.8 - v.t) * 3);
         ctx.globalCompositeOperation = 'lighter';
         ctx.strokeStyle = `rgba(255,210,110,${0.35 * a})`; ctx.lineWidth = 12; ctx.beginPath(); ctx.moveTo(v.x1, v.y1); ctx.lineTo(v.x2, v.y2); ctx.stroke();
         ctx.strokeStyle = `rgba(255,250,230,${a})`; ctx.lineWidth = 3; ctx.stroke();
@@ -556,8 +573,8 @@ class PingTracker {
       const dx = p.cx - this.px, dy = p.cy - this.py, d = Math.hypot(dx, dy);
       if (d < 900) { this.px += dx / (d || 1) * C4.TRACK_SPEED * dt; this.py += dy / (d || 1) * C4.TRACK_SPEED * dt; }
       if (d < 12 && g.core) {
-        g.core.offlineT = C4.OFFLINE; this.rest = 5; Sound.sfx.offline(); g.shake(6); g.flash(0.4, '#f33');
-        if (!g.pingHinted) { g.pingHinted = true; g.toastHint('断网！5 秒内被摧毁将无法在存档点重构——小心'); }
+        g.core.offlineT = C4.OFFLINE; this.rest = 2.5; Sound.sfx.offline(); g.shake(6); g.flash(0.4, '#f33');
+        if (!g.pingHinted) { g.pingHinted = true; g.toastHint('断网！5 秒内冲刺失灵、重力倒计时丢失——小心'); }
       }
       if (d < 200 && Math.floor(this.t * 1.5) !== Math.floor((this.t - dt) * 1.5)) Sound.sfx.ping();
     }
@@ -577,12 +594,14 @@ class PingTracker {
   }
 }
 
-// ---------------- 4. 逻辑奇点：每 5 秒爆发一次排斥力或吸引力（交替），本身不伤人 ----------------
+// ---------------- 4. 逻辑奇点：每 3.5 秒爆发一次排斥力或吸引力（交替），本身不伤人——但总被放在尖刺和深坑旁边 ----------------
+//  （力度保持原样：离它 3 格以内时吸引比你跑得快；再远一些就能跑开）
+const SING_T = 3.5;
 class LogicSingularity {
   constructor(cx, cy) { this.cx = cx * TILE + 16; this.cy = cy * TILE + 16; this.w = 30; this.h = 30; this.x = this.cx - 15; this.y = this.cy - 15; this.t = Math.random() * 2; this.push = Math.random() < 0.5; this.active = 0; this.alive = true; this.R = 300; this.colors = ['#fff']; }
   update(dt, g) {
     this.t += dt;
-    if (this.t >= 5) { this.t = 0; this.push = !this.push; this.active = 1.3; if (Math.abs(g.player.cx - this.cx) < 700) Sound.sfx.singularity(this.push); g.particles.add({ x: this.cx, y: this.cy, size: 10, grow: this.push ? 500 : -60, life: 0.4, shape: 'ring', color: '#fff', add: true }); }
+    if (this.t >= SING_T) { this.t = 0; this.push = !this.push; this.active = 1.3; if (Math.abs(g.player.cx - this.cx) < 700) Sound.sfx.singularity(this.push); g.particles.add({ x: this.cx, y: this.cy, size: 10, grow: this.push ? 500 : -60, life: 0.4, shape: 'ring', color: '#fff', add: true }); }
     if (this.active > 0) {
       this.active -= dt;
       const p = g.player, dx = p.cx - this.cx, dy = p.cy - this.cy, d = Math.hypot(dx, dy);
@@ -596,13 +615,13 @@ class LogicSingularity {
   touch() {}
   onStrike() { return 'none'; }
   draw(ctx, g) {
-    const x = this.cx, y = this.cy, warn = this.t > 3.8, pushNext = !this.push;
+    const x = this.cx, y = this.cy, warn = this.t > SING_T - 1.2, pushNext = !this.push;
     ctx.globalCompositeOperation = 'lighter';
     const gr = ctx.createRadialGradient(x, y, 2, x, y, 40); gr.addColorStop(0, 'rgba(255,255,255,0.95)'); gr.addColorStop(0.3, 'rgba(255,255,255,0.35)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
     ctx.fillStyle = gr; ctx.fillRect(x - 40, y - 40, 80, 80);
     ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1.5;
     for (let i = 0; i < 4; i++) { const a = g.t * (pushNext ? -2 : 2) + i * Math.PI / 2; ctx.beginPath(); ctx.arc(x, y, 18, a, a + 1.1); ctx.stroke(); }
-    if (warn) { const k = (this.t - 3.8) / 1.2, r = pushNext ? 20 + k * 90 : 110 - k * 90; ctx.strokeStyle = `rgba(255,255,255,${0.3 + 0.5 * k})`; ctx.setLineDash([5, 5]); ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); }
+    if (warn) { const k = (this.t - (SING_T - 1.2)) / 1.2, r = pushNext ? 20 + k * 90 : 110 - k * 90; ctx.strokeStyle = `rgba(255,255,255,${0.3 + 0.5 * k})`; ctx.setLineDash([5, 5]); ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); }
     if (this.active > 0) { ctx.strokeStyle = `rgba(255,255,255,${this.active * 0.35})`; ctx.lineWidth = 2; for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2 + g.t, r1 = 40, r2 = 40 + 40 * this.active; ctx.beginPath(); ctx.moveTo(x + Math.cos(a) * r1, y + Math.sin(a) * r1); ctx.lineTo(x + Math.cos(a) * r2, y + Math.sin(a) * r2); ctx.stroke(); } }
     ctx.globalCompositeOperation = 'source-over';
     ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.font = 'bold 9px ' + FONT; ctx.textAlign = 'center';
@@ -610,12 +629,16 @@ class LogicSingularity {
   }
 }
 
-// ---------------- 5. 协议伪造者：伪装成存档点 / 重力开关；靠近就张嘴撕咬。破绽：闪烁频率慢半拍 ----------------
+// ---------------- 5. 协议伪造者：伪装成存档点 / 重力开关；靠近就张嘴撕咬，还会扑出去追咬一小段。破绽：闪烁频率慢半拍 ----------------
+//  普通及以上难度没有存档点，伪装成存档点一眼就会被看穿——改为伪装成记忆芯片（漂浮和摆动都慢半拍）
 class ProtocolMimic {
   constructor(cx, cy, kind) {
+    if (kind === 'checkpoint' && typeof Game !== 'undefined' && Game.diff && Game.diff !== 'easy') kind = 'chip';
     this.kind = kind; this.alive = true; this.state = 'hide'; this.t = 0; this.colors = ['#e8e6de', '#f35', '#e6c56a'];
     if (kind === 'checkpoint') { this.x = cx * TILE + 2; this.y = cy * TILE - 18; this.w = 28; this.h = 50; }
+    else if (kind === 'chip') { this.x = cx * TILE + 2; this.y = cy * TILE + 4; this.w = 28; this.h = 28; this.cx0 = cx; this.cy0 = cy; }
     else { this.sw = new GravSwitch(cx, cy); this.x = this.sw.x; this.y = this.sw.y + 16; this.w = 24; this.h = 48; }
+    this.x0 = this.x;
   }
   bite() { return { x: this.x - 16, y: this.y - 18, w: this.w + 32, h: this.h + 30 }; }
   update(dt, g) {
@@ -624,19 +647,28 @@ class ProtocolMimic {
     if (this.state === 'hide' && near && g.state === 'play') { this.state = 'reveal'; this.t = 0; Sound.sfx.reveal(); }
     else if (this.state === 'reveal' && this.t > 0.25) { this.state = 'bite'; this.t = 0; Sound.sfx.mimicBite(); g.shake(4); }
     else if (this.state === 'bite') {
+      // 张嘴的同时朝你扑过去（最多离开原位 3 格，不会扑进墙里或扑下悬崖）
+      const dir = Math.sign(p.cx - (this.x + this.w / 2)), nx = this.x + dir * 380 * dt, W = g.world;
+      const lead = dir > 0 ? nx + this.w : nx, footY = this.kind === 'switch' ? null : this.y + this.h + 4;
+      if (dir && Math.abs(nx - this.x0) <= 96 && !W.pointSolid(lead, this.y + this.h / 2) && (footY == null || W.supportAt(lead, footY))) this.x = nx;
       if (g.state === 'play' && overlap(p.hurt(), this.bite())) g.killPlayer('bite');
-      if (this.t > 0.35) { this.state = 'rest'; this.t = 0; }
-    } else if (this.state === 'rest' && this.t > 1.2 && !near) { this.state = 'hide'; this.t = 0; }
-    if (this.state !== 'hide' && !g.mimicHinted) { g.mimicHinted = true; g.toastHint('协议伪造者！它身上的代码比真的机关闪得慢半拍'); }
+      if (this.t > 0.45) { this.state = 'rest'; this.t = 0; }
+    } else if (this.state === 'rest') {
+      this.x = approach(this.x, this.x0, 120 * dt); // 慢慢退回原位
+      if (this.t > 1.2 && !near) { this.state = 'hide'; this.t = 0; this.x = this.x0; }
+      else if (this.t > 1.0 && near && g.state === 'play') { this.state = 'reveal'; this.t = 0; Sound.sfx.reveal(); } // 你还在附近：再咬一次
+    }
+    if (this.state !== 'hide' && !g.mimicHinted) { g.mimicHinted = true; g.toastHint(this.kind === 'chip' ? '协议伪造者！假芯片漂浮和摆动都比真的慢半拍' : '协议伪造者！它身上的代码比真的机关闪得慢半拍'); }
   }
   touch(p, g) { if (stomp4(p, this, 12)) { g.killEnemy(this); g.stompBounce(); } }
   draw(ctx, g) {
     const open = this.state === 'hide' ? 0 : this.state === 'reveal' ? this.t / 0.25 : this.state === 'bite' ? 1 : 0.4;
     const slowG = { t: g.t * 0.5 }; // 破绽：闪烁频率慢半拍
-    if (this.kind === 'checkpoint') {
-      if (open < 0.05) { Checkpoint.prototype.draw.call({ x: this.x, y: this.y, active: false, t: 0 }, ctx, slowG); return; }
-      const x = this.x, y = this.y, cx = x + 14;
-      ctx.save(); ctx.translate(cx, y + 26);
+    if (this.kind === 'chip' && open < 0.05) { Chip.prototype.draw.call({ x: this.cx0 * TILE + 8, y: this.cy0 * TILE + 8, got: false, t: g.t * 0.5 }, ctx); return; }
+    if (this.kind === 'checkpoint' || this.kind === 'chip') {
+      if (this.kind === 'checkpoint' && open < 0.05) { Checkpoint.prototype.draw.call({ x: this.x, y: this.y, active: false, t: 0 }, ctx, slowG); return; }
+      const sc = this.kind === 'chip' ? 0.6 : 1, x = this.x, y = this.y, cx = x + 14;
+      ctx.save(); ctx.translate(cx, y + (this.kind === 'chip' ? 16 : 26)); ctx.scale(sc, sc);
       for (const s of [-1, 1]) { // 上下颚
         ctx.save(); ctx.rotate(s * open * 0.7);
         ctx.fillStyle = '#4a463c'; ctx.fillRect(-14, s > 0 ? 0 : -26, 28, 26);
@@ -1179,7 +1211,9 @@ const LEVELS_CH4 = [
       B.set(60, 13, 'K'); voidCeil(B, 64, 74);
       B.fill(78, 13, 88, 13, '^'); B.set(76, 13, 'G'); B.fill(81, 3, 82, 3, 'v'); B.set(85, 5, 'o'); B.set(91, 3, 'G');
       B.set(94, 13, 'K'); voidFloor(B, 98, 110); B.set(96, 13, 'G'); B.fill(102, 3, 103, 3, 'v'); B.set(113, 3, 'G');
-      B.set(118, 9, 'o'); B.set(125, 13, 'E');
+      // 结尾：深坑上方悬空的重力开关——起跳去碰它，在空中被甩上天花板
+      voidFloor(B, 116, 121); B.set(117, 9, 'G'); B.set(120, 6, 'o'); B.set(123, 3, 'G');
+      B.set(125, 13, 'E');
     },
     radio: [
       { x: 3, lines: [
@@ -1190,6 +1224,7 @@ const LEVELS_CH4 = [
       { x: 30, lines: [['EVA', '墙挡住了地面的路？那就从天花板上走过去。']] },
       { x: 62, lines: [['EVA', '头顶的天花板有缺口。重力反转的时候如果站在缺口下面，你会一直掉出这个世界。']] },
       { x: 77, lines: [['EVA', '天花板上也有尖刺。倒着跳，是往「下」跳。']] },
+      { x: 114, lines: [['EVA', '开关悬在坑的上方。跳起来去碰它——在空中翻转。']] },
     ],
   },
   // 4-2 红蓝潮汐：重力按时间交替
@@ -1203,9 +1238,11 @@ const LEVELS_CH4 = [
       voidCeil(B, 45, 54); B.fill(49, 13, 50, 13, '^');
       voidFloor(B, 55, 62); B.fill(58, 3, 59, 3, 'v');
       B.set(65, 13, 'K'); B.set(69, 8, 'R'); B.set(66, 5, 'o');
-      voidCeil(B, 73, 84); B.set(77, 13, '^'); B.set(81, 13, '^');
-      voidFloor(B, 85, 93);
-      B.set(99, 8, 'R'); B.set(100, 5, 'o'); B.set(104, 13, 'E');
+      // 上下都是坑：在重力翻转的那一刻起跳，被甩到对面
+      voidCeil(B, 73, 84); B.set(76, 13, '^'); B.set(79, 13, '^');
+      voidFloor(B, 83, 93);
+      voidCeil(B, 92, 100);
+      B.set(102, 8, 'R'); B.set(100, 5, 'o'); B.set(106, 13, 'E');
     },
     radio: [
       { x: 3, lines: [
@@ -1214,94 +1251,123 @@ const LEVELS_CH4 = [
       ] },
       { x: 11, lines: [['EVA', '只有地面的路段要在「蓝」的时候过；只有天花板的路段要在「红」的时候过。在两边都有地面的地方等。']] },
       { x: 36, lines: [['EVA', '磁轨浮空姬永远站在重力的反面。它掉下来的途中撞上去，就能踩碎它。']] },
+      { x: 72, lines: [['EVA', '前面上下都没有路。在地面的尽头等——重力翻转的那一刻跳出去，它会把你甩到对面的天花板上。']] },
     ],
   },
   // 4-3 降维扫描：一键模式
   {
-    id: '4-3', name: '降维扫描', en: 'DIMENSION SCAN', w: 132, h: 18, theme: THEMES.core, music: 'core',
+    id: '4-3', name: '降维扫描', en: 'DIMENSION SCAN', w: 150, h: 18, theme: THEMES.core, music: 'core',
     build(B) {
-      frame4(B, 132); B.set(3, 13, 'S'); B.set(8, 13, 'K'); B.shift(14, 122, 'cube');
-      B.set(22, 13, '^'); B.set(30, 13, '^'); B.fill(38, 13, 39, 13, '^'); B.set(38, 10, 'o');
-      B.fill(46, 13, 48, 13, '#');
-      voidFloor(B, 56, 58);
-      B.fill(66, 13, 68, 13, '^'); B.set(67, 10, 'o');
-      B.fill(75, 13, 77, 13, '#'); B.fill(78, 12, 80, 13, '#');
-      B.set(88, 13, '^');
-      voidFloor(B, 94, 97);
-      B.fill(104, 13, 105, 13, '^');
-      B.set(112, 13, '^'); B.set(112, 10, 'o');
-      B.set(127, 13, 'E');
+      // 一键模式的跳跃距离固定（约 5.7 格，加速段约 6.8 格），障碍之间留出落脚点
+      frame4(B, 150); B.set(3, 13, 'S'); B.set(8, 13, 'K'); B.shift(14, 110, 'cube'); B.shift(111, 143, 'cube', 370);
+      B.set(20, 13, '^'); B.fill(27, 13, 28, 13, '^'); B.set(35, 13, '^');
+      B.fill(44, 13, 45, 13, '^'); B.set(44, 10, 'o');
+      B.fill(50, 13, 53, 13, '#');
+      // 低矮的带刺顶棚：跳过前面的尖刺之后要松开跳跃键，贴着地面滑过去
+      B.set(61, 13, '^'); B.fill(65, 9, 69, 9, '#'); B.fill(65, 10, 69, 10, 'v');
+      voidFloor(B, 73, 75);
+      B.fill(83, 13, 85, 13, '^'); B.set(84, 10, 'o');
+      // 重力传送门：在天花板上跑一段
+      B.set(90, 12, 'G'); B.set(96, 3, 'v'); B.fill(102, 3, 103, 3, 'v'); B.set(108, 4, 'G');
+      // 加速段
+      voidFloor(B, 114, 116); B.set(122, 13, '^');
+      B.fill(127, 13, 129, 13, '#');
+      B.fill(134, 13, 135, 13, '^'); B.set(134, 10, 'o');
+      voidFloor(B, 140, 142);
+      B.set(146, 13, 'E');
     },
     radio: [
       { x: 3, lines: [
         ['EVA', '前面是「降维扫描光束」。穿过它，你的维度会被压缩——只剩下一个按键。'],
         ['SYS', '[维度重写] 一键模式：自动向前奔跑，只能按 {jump} 起跳（按住会连续起跳）· 撞到墙面即死'],
       ] },
+      { x: 57, lines: [['EVA', '前面有低矮的带刺顶棚——跳过尖刺之后马上松手，别让它连跳！']] },
+      { x: 109, lines: [['EVA', '维度还在继续压缩……速度要变快了！']] },
     ],
   },
   // 4-4 切线向量：维度撕裂者 + 重力交替
   {
-    id: '4-4', name: '切线向量', en: 'TANGENT VECTORS', w: 120, h: 18, theme: THEMES.core, music: 'core', gcycle: [5, 4],
+    id: '4-4', name: '切线向量', en: 'TANGENT VECTORS', w: 120, h: 18, theme: THEMES.core, music: 'core', gcycle: [3, 2.5],
     build(B) {
       frame4(B, 120); B.set(3, 13, 'S');
       voidCeil(B, 17, 24);
       B.set(26, 13, 'K'); B.set(30, 7, 'J'); B.set(26, 8, 'o');
-      voidFloor(B, 35, 43); B.set(39, 8, 'J');
-      B.set(46, 13, 'K'); B.set(52, 7, 'J'); B.set(52, 11, 'o');
-      voidCeil(B, 57, 66); B.set(61, 13, '^');
-      voidFloor(B, 67, 75); B.set(71, 3, 'v');
-      B.set(78, 13, 'K'); B.set(82, 6, 'J'); B.set(87, 9, 'J');
-      voidCeil(B, 91, 99); B.set(95, 10, 'o');
+      voidFloor(B, 34, 46); B.set(40, 8, 'J');
+      B.set(49, 13, 'K'); B.set(53, 7, 'J'); B.set(52, 11, 'o');
+      voidCeil(B, 57, 67); B.set(61, 13, '^');
+      voidFloor(B, 66, 78); B.set(72, 3, 'v'); B.set(71, 8, 'J');
+      B.set(81, 13, 'K'); B.set(84, 6, 'J'); B.set(88, 9, 'J');
+      voidCeil(B, 91, 101); B.set(95, 10, 'o');
+      voidFloor(B, 100, 110); B.set(105, 8, 'J');
       B.set(114, 13, 'E');
     },
     radio: [
-      { x: 3, lines: [['EVA', '金色的几何体是「维度撕裂者」。它画出的虚线 3 秒后会变成实体激光——看清楚线的走向，站到它们之外。']] },
+      { x: 3, lines: [['EVA', '金色的几何体是「维度撕裂者」。它画出的虚线 2 秒后就会变成实体激光，而且瞄的是你接下来要去的地方——别直线往前冲。']] },
       { x: 27, lines: [['EVA', '重力还在交替。别被激光和重力同时逼进死角。']] },
     ],
   },
-  // 4-5 奇点风暴：逻辑奇点 + 深坑
+  // 4-5 奇点风暴：竖向爬塔。重力开关把你「掉」上去，逻辑奇点守在尖刺旁边
+  //  每层：从下一层的缺口掉上来 → 倒着走到开关、翻回正常重力落到本层地面 → 穿过倒挂的矮墙和奇点、跳过尖刺 → 开关把你从上方的缺口掉进下一层
+  //  倒挂的矮墙挡住倒着走的路，不能跳过「落回地面」这一步
   {
-    id: '4-5', name: '奇点风暴', en: 'SINGULARITY STORM', w: 120, h: 18, theme: THEMES.core, music: 'core',
+    id: '4-5', name: '奇点风暴', en: 'SINGULARITY STORM', w: 40, h: 70, theme: THEMES.coreTower, music: 'core',
     build(B) {
-      frame4(B, 120); B.set(3, 13, 'S');
-      voidFloor(B, 14, 19); B.set(16, 8, 'O');
-      B.set(22, 13, 'K');
-      voidFloor(B, 35, 41); B.set(38, 6, 'O'); B.set(38, 10, 'o');
-      B.set(50, 13, 'G'); voidCeil(B, 60, 65); B.set(62, 9, 'O'); B.set(70, 3, 'G');
-      B.set(73, 13, 'K');
-      voidFloor(B, 78, 84); B.set(81, 8, 'O'); B.set(81, 11, 'o');
-      B.set(95, 9, 'o');
-      voidFloor(B, 101, 105); B.set(103, 6, 'O');
-      B.set(114, 13, 'E');
+      B.fill(0, 0, 1, 69, '#'); B.fill(38, 0, 39, 69, '#'); B.fill(2, 0, 37, 4, '#'); B.fill(2, 68, 37, 69, '#');
+      const R = [30, 34], L = [5, 9]; // 缺口位置：右 / 左（4 格宽）
+      for (let k = 0; k < 8; k++) {
+        const b = 68 - 8 * k, t = b - 8, right = k % 2 === 0, C = right ? R : L; // 本层：地面 b，顶板 t，出口缺口 C
+        if (k < 7) { B.fill(2, t, 37, t, '#'); B.fill(C[0], t, C[1] - 1, t, ' '); }
+        const sw = right ? C[0] - 2 : C[1] + 1; // 出口开关：在缺口的「来路」一侧，离缺口 1 格（跑着碰到开关，翻转时的横向漂移正好把你送进缺口）
+        if (k === 0) {
+          B.set(4, b - 1, 'S');
+          B.fill(12, b - 1, 13, b - 1, '^'); B.set(12, b - 5, 'O'); B.fill(22, b - 1, 23, b - 1, '^');
+          B.set(sw, b - 1, 'G'); B.set(18, b - 4, 'o');
+          continue;
+        }
+        const A = right ? L : R;                 // 入口缺口（上一层的出口）在另一侧
+        const drop = right ? A[1] + 3 : A[0] - 4; // 倒着走到这里的开关，翻回正常重力
+        const H = right ? 17 : 21;               // 倒挂的矮墙（从顶板往下 3 格）
+        B.fill(H, t + 1, H + 1, t + 3, '#');
+        B.set(drop, t + 1, 'G');
+        // 地面上的尖刺 + 奇点（上下两面都有刺）
+        const sx = right ? 24 : 13;
+        B.fill(sx, b - 1, sx + 1, b - 1, '^'); B.fill(sx, t + 1, sx + 1, t + 1, 'v'); B.set(sx, b - 5, 'O'); // 奇点守在尖刺正上方：等它爆发完再冲过去
+        if (k === 7) { B.set(right ? 34 : 4, b - 1, 'E'); continue; } // 顶层：终点
+        B.set(sw, b - 1, 'G');
+        if (k === 3 || k === 6) B.set(right ? 20 : 18, b - 1, 'K'); // 存档点放在矮墙和尖刺之间，别压住开关
+        if (k === 2 || k === 5) B.set(sx + 1, b - 3, 'o');
+      }
     },
     radio: [
-      { x: 3, lines: [['EVA', '白色的漩涡是「逻辑奇点」。它不伤人，但每隔 5 秒会爆发一次——排斥和吸引交替出现。']] },
-      { x: 10, lines: [['EVA', '爆发前它周围会出现一圈虚线：向外扩的是排斥，向里收的是吸引。等它平静下来再跳。']] },
+      { x: 3, lines: [
+        ['EVA', '一座竖着的塔。重力开关会把你「掉」上去——掉过头顶的缺口，撞到上一层的天花板为止。'],
+        ['EVA', '白色的漩涡是「逻辑奇点」。它本身不伤人，但每隔 3.5 秒就会爆发一次——排斥和吸引交替出现，而它总守在尖刺和深坑旁边。'],
+      ] },
     ],
   },
   // 4-6 格式化：格式化追踪者，不能停下
   {
-    id: '4-6', name: '格式化', en: 'FORMAT', w: 150, h: 18, theme: THEMES.core, music: 'core', gcycle: [4.5, 4],
+    id: '4-6', name: '格式化', en: 'FORMAT', w: 150, h: 18, theme: THEMES.core, music: 'core', gcycle: [3, 3],
     build(B) {
       frame4(B, 150); B.set(3, 13, 'S'); B.set(4, 6, 'P');
       voidCeil(B, 15, 22);
       B.set(24, 13, 'K'); B.set(27, 8, 'o');
-      voidFloor(B, 33, 41);
-      B.set(44, 13, 'K');
+      voidFloor(B, 32, 44);
+      B.set(47, 13, 'K'); B.set(48, 8, 'R');
       voidCeil(B, 53, 62); B.set(57, 13, '^'); B.set(58, 6, 'P');
-      voidFloor(B, 63, 70);
-      B.set(73, 13, 'K'); B.set(76, 8, 'o');
-      voidCeil(B, 83, 92);
-      B.set(96, 6, 'P');
-      voidFloor(B, 101, 109); B.set(105, 3, 'v');
-      B.set(112, 13, 'K');
+      voidFloor(B, 61, 72);
+      B.set(75, 13, 'K'); B.set(76, 8, 'o');
+      voidCeil(B, 83, 93);
+      voidFloor(B, 92, 104); B.set(98, 3, 'v'); B.set(96, 6, 'P');
+      B.set(107, 13, 'K'); B.set(115, 8, 'R');
       voidCeil(B, 123, 131);
+      voidFloor(B, 130, 138);
       B.set(135, 8, 'o'); B.set(144, 13, 'E');
     },
     radio: [
       { x: 3, lines: [
         ['EVA', '那道雷达波是「格式化追踪者」。它无法被攻击，会一直慢慢地朝你漂过来。'],
-        ['EVA', '别在一个地方停太久——被它完全重合，你的拉撒路协议会断网 5 秒。那 5 秒里被摧毁的话……你就回不到存档点了。'],
+        ['EVA', '别在一个地方停太久——被它完全重合，你的拉撒路协议会断网 5 秒：冲刺失灵，重力倒计时也会丢失。'],
       ] },
     ],
   },
@@ -1316,11 +1382,14 @@ const LEVELS_CH4 = [
       B.fill(58, 13, 62, 13, '^'); B.set(53, 13, 'q'); B.set(56, 13, 'G'); B.set(60, 5, 'o'); B.set(65, 3, 'G');
       B.set(72, 13, 'K'); B.set(80, 13, 'Q');
       voidFloor(B, 86, 96); B.set(84, 13, 'G'); B.set(92, 5, 'o'); B.set(97, 3, 'q'); B.set(100, 3, 'G');
-      B.set(106, 13, 'K'); B.set(115, 13, 'Q'); B.set(110, 9, 'o'); B.set(125, 13, 'E');
+      B.set(106, 13, 'K'); B.set(112, 13, 'Q'); B.set(109, 9, 'o');
+      // 坑边地上的「开关」是假的——从它头上跳过去，去碰悬在坑上方的真开关
+      voidFloor(B, 116, 121); B.set(114, 13, 'q'); B.set(117, 11, 'G'); B.set(123, 3, 'G');
+      B.set(125, 13, 'E');
     },
     radio: [
-      { x: 3, lines: [['EVA', '小心。这一层有「协议伪造者」——它们会伪装成存档点和重力开关，你一靠近就张嘴咬下来。']] },
-      { x: 10, lines: [['EVA', '唯一的破绽：它们身上闪烁的代码，比真的机关慢半拍。对比一下你刚刚用过的那个存档点。']] },
+      { x: 3, lines: [['EVA', '小心。这一层有「协议伪造者」——它们会伪装成存档点、记忆芯片和重力开关，你一靠近就张嘴扑上来。']] },
+      { x: 10, lines: [['EVA', '唯一的破绽：它们闪烁、漂浮的节奏，比真的东西慢半拍。多对比一下。']] },
     ],
   },
   // 4-8 线框视界：线框模式 + 带重力传送门的一键模式
@@ -1329,14 +1398,14 @@ const LEVELS_CH4 = [
     build(B) {
       frame4(B, 150); B.set(3, 13, 'S'); B.set(6, 13, 'K');
       B.shift(10, 58, 'wire');
-      voidFloor(B, 16, 19); voidFloor(B, 21, 30); B.fill(22, 11, 25, 11, '=');
-      B.set(35, 13, '^'); voidFloor(B, 41, 44); B.set(38, 9, 'o');
-      B.set(51, 13, '^'); B.set(52, 13, '^');
+      voidFloor(B, 16, 19); voidFloor(B, 21, 30); B.fill(22, 11, 25, 11, 'C'); // 线框里的平台一踩就塌
+      B.set(35, 13, '^'); B.set(36, 7, 'J'); voidFloor(B, 41, 49); B.fill(44, 11, 46, 11, 'C'); B.set(38, 9, 'o');
+      B.set(53, 13, '^'); B.set(54, 13, '^'); B.set(55, 6, 'J');
       B.set(61, 13, 'K');
       B.shift(66, 140, 'cube');
-      B.set(74, 13, '^'); B.fill(82, 13, 83, 13, '^'); B.set(90, 12, 'G');
+      B.set(74, 13, '^'); B.fill(79, 13, 80, 13, '^'); B.fill(84, 13, 86, 13, '^'); B.set(90, 12, 'G');
       B.set(101, 3, 'v'); B.fill(108, 3, 109, 3, 'v'); B.set(105, 6, 'o'); B.set(117, 4, 'G');
-      B.set(127, 13, '^'); voidFloor(B, 133, 135);
+      B.set(122, 13, '^'); B.set(127, 13, '^'); voidFloor(B, 131, 134); B.set(139, 13, '^');
       B.set(146, 13, 'E');
     },
     radio: [
@@ -1346,20 +1415,25 @@ const LEVELS_CH4 = [
   },
   // 4-9 神座阶梯：全机制综合
   {
-    id: '4-9', name: '神座阶梯', en: 'STAIRWAY TO THE THRONE', w: 160, h: 18, theme: THEMES.coreThrone, music: 'core', gcycle: [4.5, 4],
+    id: '4-9', name: '神座阶梯', en: 'STAIRWAY TO THE THRONE', w: 160, h: 18, theme: THEMES.coreThrone, music: 'core', gcycle: [2.5, 2.5],
     build(B) {
       frame4(B, 160); B.set(3, 13, 'S'); B.set(4, 6, 'P');
       voidCeil(B, 15, 23);
       B.set(26, 13, 'K'); B.set(31, 8, 'R'); B.set(34, 6, 'J'); B.set(28, 8, 'o');
-      voidFloor(B, 37, 45); B.set(41, 3, 'v');
-      B.set(48, 13, 'Q'); B.set(52, 13, 'K'); B.set(56, 7, 'O');
+      voidFloor(B, 36, 47); B.set(41, 3, 'v');
+      B.set(49, 13, 'Q'); B.set(51, 13, 'K');
+      B.set(60, 8, 'O'); B.fill(55, 13, 57, 13, '^'); B.fill(55, 3, 57, 3, 'v'); // 奇点在尖刺前方：在尖刺前面磨蹭，吸引会把你拖进去
       voidCeil(B, 59, 68); B.set(63, 13, '^');
-      B.set(71, 13, 'K'); B.set(75, 8, 'R'); B.set(74, 10, 'o');
-      voidFloor(B, 81, 90);
-      B.set(93, 13, 'K'); B.set(98, 7, 'J'); B.set(102, 8, 'O');
+      voidFloor(B, 67, 72);
+      B.set(74, 13, 'K'); B.set(77, 8, 'R'); B.set(76, 10, 'o'); B.set(80, 6, 'P');
+      voidFloor(B, 80, 92);
+      B.set(95, 13, 'K'); B.set(98, 7, 'J'); B.set(106, 8, 'O'); B.fill(101, 13, 103, 13, '^');
       voidCeil(B, 105, 114); B.set(109, 13, '^');
-      voidFloor(B, 115, 122);
-      B.set(125, 13, 'K'); B.set(135, 13, 'Q'); B.set(140, 8, 'o'); B.set(150, 13, 'E');
+      voidFloor(B, 113, 124);
+      B.set(126, 13, 'K'); B.set(128, 8, 'R'); B.set(130, 6, 'J');
+      voidCeil(B, 132, 141); B.set(135, 13, 'Q');
+      voidFloor(B, 140, 146); B.set(140, 8, 'o');
+      B.set(150, 13, 'E');
     },
     radio: [
       { x: 3, lines: [['EVA', '这是通往神座的最后一段路。它的每一种防御都在这里。']] },

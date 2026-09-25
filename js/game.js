@@ -744,7 +744,7 @@ const Game = {
       ctx.strokeStyle = `rgba(255,50,40,${a * Math.min(1, p.dashLock)})`; ctx.lineWidth = 1.5; ctx.setLineDash([6, 5]);
       ctx.beginPath(); ctx.moveTo(d.x + 14, d.y + 12); ctx.lineTo(p.cx, p.cy); ctx.stroke(); ctx.setLineDash([]);
     }
-    const x = p.cx, y = p.y - 16, k = p.dashLock / 2;
+    const x = p.cx, y = p.y - 16, k = Math.min(1, p.dashLock / (this.core && this.core.offlineT > 0 ? C4.OFFLINE : 2));
     ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.stroke();
     ctx.strokeStyle = '#f44'; ctx.beginPath(); ctx.arc(x, y, 7, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * k); ctx.stroke();
     ctx.fillStyle = '#f66'; ctx.font = 'bold 9px ' + FONT; ctx.textAlign = 'center'; ctx.fillText('⚡', x, y + 3); ctx.textAlign = 'left';
@@ -787,10 +787,10 @@ const Game = {
     ctx.font = '10px ' + MONO; ctx.fillStyle = 'rgba(200,200,200,0.7)'; ctx.fillText(p.C.jet ? 'SLAM' : p.C.blink ? 'BLINK' : p.C.grapple ? 'HOOK' : 'DASH', dx + 10, 28); // 阿特拉斯的冲刺键是地面猛击
     let col = '#6ff', label = 'READY';
     if (p.lockT > 0) { col = (this.t * 10) % 2 < 1 ? '#f35' : '#a13'; label = `LOCK ${p.lockT.toFixed(1)}s`; }
-    else if (p.dashLock > 0) { col = (this.t * 10) % 2 < 1 ? '#f33' : '#a11'; label = `ALARM ${p.dashLock.toFixed(1)}s`; }
+    else if (p.dashLock > 0) { col = (this.t * 10) % 2 < 1 ? '#f33' : '#a11'; label = `${this.core && this.core.offlineT > 0 ? 'OFFLINE' : 'ALARM'} ${p.dashLock.toFixed(1)}s`; }
     else if (p.hook) { col = '#ff9a3c'; label = 'HOOKED'; }
     else if (!p.canDash) { col = '#666'; label = 'USED'; }
-    ctx.fillStyle = col; ctx.fillRect(dx + 10, 34, 98 * (p.lockT > 0 ? p.lockT / 1.5 : p.dashLock > 0 ? p.dashLock / 2 : 1), 6);
+    ctx.fillStyle = col; ctx.fillRect(dx + 10, 34, 98 * (p.lockT > 0 ? p.lockT / 1.5 : p.dashLock > 0 ? Math.min(1, p.dashLock / (this.core && this.core.offlineT > 0 ? C4.OFFLINE : 2)) : 1), 6);
     ctx.font = 'bold 10px ' + MONO; ctx.fillText(label, dx + 48, 28);
     const wk = Inventory.weapon();
     if (wk) {
