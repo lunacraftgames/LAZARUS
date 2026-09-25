@@ -114,7 +114,7 @@ class Player {
     const ctl = this.ctl = { tick: g.t, mx, jumpHeld: I.down('jump'), jumped: null, dashed: false, dashDir: null };
     // 向上瞄准：抬头、举手 / 枪口朝上；站着不动一会儿，镜头会往上看
     this.lookUp = I.down('up') && !I.down('down');
-    this.aimDown = !this.onGround && I.down('down') && !I.down('up'); // 空中按住 ↓：低头、枪口朝下（↓ + 攻击 = 下劈 / 朝下开枪）
+    this.aimDown = (!this.onGround || this.inWater) && I.down('down') && !I.down('up'); // 空中 / 水中按住 ↓：低头、枪口朝下（↓ + 攻击 = 下劈 / 朝下开枪）
     this.lookT = this.lookUp && this.onGround && Math.abs(this.vx) < 30 ? this.lookT + dt : 0;
     // ---- 第四章：重力方向。下面的物理全部在「本地坐标」里计算（vy > 0 = 朝自己脚下），最后再换回世界坐标 ----
     const gd = g.core ? g.core.gd : 1;
@@ -164,12 +164,12 @@ class Player {
     if (this.atkBuf > 0 && WP && this.atkCd <= 0 && !g.noAttack) {
       this.atkBuf = 0;
       if (WP.melee) {
-        this.atkDown = !this.onGround && I.down('down'); this.atkUp = !this.atkDown && I.down('up');
+        this.atkDown = (!this.onGround || this.inWater) && I.down('down'); this.atkUp = !this.atkDown && I.down('up');
         this.atkT = WP.active; this.atkCd = WP.cd; this.atkCdMax = WP.cd; this.atkHits = new Set(); this.atkSwing = WP.swing; this.atkSwingMax = WP.swing; this.atkHeavy = false;
         Sound.sfx.slash(); Input.rumble(0, 0.2, 50);
         if (WP.charge) this.chargeT = 0; // 巨像残刃：出刀后继续按住 = 蓄力
       } else {
-        const dir = I.down('up') ? 'up' : !this.onGround && I.down('down') ? 'down' : 'side';
+        const dir = I.down('up') ? 'up' : (!this.onGround || this.inWater) && I.down('down') ? 'down' : 'side';
         this.atkCd = WP.cd; this.atkCdMax = WP.cd;
         g.fireWeapon(this, wk, dir);
       }
