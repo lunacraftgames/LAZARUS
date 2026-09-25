@@ -38,6 +38,7 @@ class Player {
       atkT: 0, atkCd: 0, atkDown: false, atkHits: new Set(), atkSwing: 0, chargeT: -1, atkHeavy: false,
       jumpsLeft: 1, slimeT: 0, inWater: false, swimCd: 0,
       lockT: 0, lockImmune: 0, lagT: 0, lagBuf: [], lagOut: null, ctl: {},
+      gd: 1, prevTop: y, cubeRot: 0, frozen: false, // 第四章：重力方向（1 正常 / -1 反转）、一键模式、终局冻结
     });
   }
   hurt() { return { x: this.x + 4, y: this.y + 6, w: this.w - 8, h: this.h - 8 }; }
@@ -77,6 +78,8 @@ class Player {
 
   update(dt, g) {
     const W = g.world;
+    if (this.frozen) return; // 第四章终局演出
+    this.prevTop = this.y;
     if (this.lockT > 0) this.lockT -= dt;
     if (this.lockImmune > 0) this.lockImmune -= dt;
     if (this.lagT > 0) this.lagT -= dt;
@@ -88,6 +91,12 @@ class Player {
     const mx = (I.down('right') ? 1 : 0) - (I.down('left') ? 1 : 0);
     // 本帧的实际操作（镜像执行官读取它）
     const ctl = this.ctl = { tick: g.t, mx, jumpHeld: I.down('jump'), jumped: null, dashed: false, dashDir: null };
+    // ---- 第四章：重力方向。下面的物理全部在「本地坐标」里计算（vy > 0 = 朝自己脚下），最后再换回世界坐标 ----
+    const gd = g.core ? g.core.gd : 1;
+    if (gd !== this.gd) { this.gd = gd; this.onGround = false; this.coyote = 0; this.jumping = false; this.jumpsLeft = 1; }
+    if (g.core && g.core.mode === 'cube') return this.updateCube(dt, g, I, ctl);
+    this.vy *= gd;
+    const footY = gd > 0 ? this.y + this.h + 1 : this.y - 1;
     if (I.hit('jump')) this.jumpBuf = PL.BUFFER; else this.jumpBuf -= dt;
     if (this.onGround) { this.coyote = PL.COYOTE; if (this.dashT <= 0) this.canDash = true; } else this.coyote -= dt;
     // ---- 培养液（水下低重力）与粘液状态 ----
@@ -122,7 +131,7 @@ class Player {
     if (I.hit('swap')) g.swapWeapon();
     const wk = Inventory.weapon(), WP = WPN[wk];
     if (I.hit('attack')) this.atkBuf = 0.12; else this.atkBuf = (this.atkBuf || 0) - dt; // 攻击输入缓冲：冷却快结束时按下也会出手
-    if (this.atkBuf > 0 && WP && this.atkCd <= 0) {
+    if (this.atkBuf > 0 && WP && this.atkCd <= 0 && !g.noAttack) {
       this.atkBuf = 0;
       if (WP.melee) {
         this.atkDown = !this.onGround && I.down('down');
@@ -155,7 +164,7 @@ class Player {
       this.dashT -= dt;
       const ds = this.inWater ? PL.DASH_SPEED * 0.7 : PL.DASH_SPEED;
       this.vx = this.dashDir.x * ds; this.vy = this.dashDir.y * ds;
-      const grounded = this.dashDir.y === 0 && (W.supportAt(this.x + 2, this.y + this.h + 1) || W.supportAt(this.x + this.w - 2, this.y + this.h + 1));
+      const grounded = this.dashDir.y === 0 && (W.supportAt(this.x + 2, footY) || W.supportAt(this.x + this.w - 2, footY));
       if (grounded) this.coyote = PL.COYOTE;
       this.trailT -= dt;
       if (this.trailT <= 0) {
@@ -188,14 +197,16 @@ class Player {
     } else {
       const target = mx * PL.RUN;
       let acc = this.onGround ? (mx ? PL.ACC_G : PL.DEC_G) : (mx ? PL.ACC_A : PL.DEC_A);
+      const wire = g.core && g.core.mode === 'wire'; // 第四章线框视界：没有惯性，起跳高度固定
       // 空中顺着方向时保留冲刺带来的额外速度（手感更宽容）
       if (!this.onGround && mx && Math.sign(this.vx) === mx && Math.abs(this.vx) > PL.RUN) acc = 380;
+      if (wire) acc = 1e5;
       this.vx = approach(this.vx, target, acc * dt);
       if (mx) this.facing = mx;
       let grav = GRAV;
       if (this.jumping && I.down('jump') && Math.abs(this.vy) < 100) grav *= 0.5;
       this.vy = Math.min(this.vy + grav * dt, MAXFALL);
-      if (this.jumping && !I.down('jump') && this.vy < -220) { this.vy *= 0.48; this.jumping = false; }
+      if (this.jumping && !I.down('jump') && this.vy < -220 && !wire) { this.vy *= 0.48; this.jumping = false; }
       if (this.vy >= 0) this.jumping = false;
       if (this.jumpBuf > 0 && this.coyote > 0) {
         this.jumpBuf = 0; this.coyote = 0;
@@ -222,7 +233,7 @@ class Player {
     const hx = W.moveX(this, this.vx * dt);
     if (hx) this.vx = 0;
     const wasGround = this.onGround;
-    const ry = W.moveY(this, this.vy * dt, this.dropT > 0);
+    const ry = W.moveY(this, this.vy * dt * gd, this.dropT > 0 && gd > 0);
     this.onGround = false; this.ground = null; this.groundOneWay = false;
     if (ry) {
       if (this.vy >= 0) {
@@ -239,6 +250,7 @@ class Player {
       }
     }
     this.airT = this.onGround ? 0 : this.airT + dt;
+    this.vy *= gd; // 换回世界坐标
 
     // ---- 动画 ----
     this.sx = approach(this.sx, 1, dt * 3.5); this.sy = approach(this.sy, 1, dt * 3.5);
@@ -247,7 +259,14 @@ class Player {
     this.trail = this.trail.filter((t) => t.t < 0.22);
   }
 
+  // 重力反转时整个身体上下翻转
   draw(ctx, g) {
+    const flip = this.gd < 0;
+    if (flip) { ctx.save(); ctx.translate(0, 2 * this.cy); ctx.scale(1, -1); }
+    this.drawMain(ctx, g);
+    if (flip) ctx.restore();
+  }
+  drawMain(ctx, g) {
     for (const t of this.trail) {
       ctx.globalAlpha = (1 - t.t / 0.22) * 0.45;
       this.drawBody(ctx, t.x, t.y, t.f, 1, 1, g, t.c || '#5ff');

@@ -103,7 +103,7 @@ const Game = {
   },
   // 播放某章开场剧情，结束后进入该章第一关
   playStory(ch) {
-    this.storyCh = ch; this.storyLines = CHAPTERS[ch].story;
+    this.storyCh = ch; this.storyLines = CHAPTERS[ch].story; this.storyDone = null;
     this.state = 'story'; this.stateT = 0; this.storyIdx = 0; this.storyT = 0; Sound.music('radio');
   },
   get chapter() { return this.level ? chapterOf(this.level) : 1; },
@@ -115,6 +115,8 @@ const Game = {
     const grid = B.grid.map((r) => r.slice());
     this.enemySpawns = []; this.props = []; this.crumbles = []; this.movers = []; this.projectiles = []; this.bolts = []; this.pshots = [];
     this.matrix = null; // 第三章控制器（拉撒路残影 / 延迟力场），由关卡自己创建
+    this.core = null;   // 第四章控制器（重力反转 / 维度重写 / 断网），由关卡自己创建
+    this.noAttack = false; this.bossSave = null; // Boss 可以剥夺攻击键；bossSave = Boss 的阶段存档（死亡后从该阶段重来）
     const occ = new Set(); let spawn = { cx: 3, cy: 3 }, crumbleGroup = 0, laserIdx = 0, chipIdx = 0;
     const lateProps = [];
     for (let y = 0; y < def.h; y++) {
@@ -168,6 +170,7 @@ const Game = {
     if (this.boss && this.boss.mobs) this.enemies = this.enemies.filter((e) => !this.boss.mobs.includes(e));
     if (this.level.boss === 'incubator') { this.exhibit = null; this.boss = new Incubator(this, short); return; }
     if (this.level.boss === 'mirror') { this.exhibit = null; this.boss = new MirrorLazarus(this, short); return; }
+    if (this.level.boss === 'omni') { this.exhibit = null; this.boss = new OmniMind(this, short); return; }
     this.exhibit = new ExhibitCase(this);
     this.boss = new Colossus(this, short);
   },
@@ -197,7 +200,7 @@ const Game = {
   },
   stompBounce(mul) {
     const p = this.player, m = mul || 1;
-    p.vy = (Input.down('jump') ? -700 : -470) * m; p.jumping = Input.down('jump'); p.canDash = true; p.dashT = 0; p.jumpsLeft = 1;
+    p.vy = (Input.down('jump') ? -700 : -470) * m * (p.gd || 1); p.jumping = Input.down('jump'); p.canDash = true; p.dashT = 0; p.jumpsLeft = 1;
     p.sx = 0.8; p.sy = 1.25;
   },
   explosion(x, y, r) {
@@ -249,6 +252,11 @@ const Game = {
     if (ch === 3) {
       this.say(RADIO.mirrorDefeat);
       setTimeout(() => Inventory.drop(9006), 1200);
+      return;
+    }
+    if (ch === 4) {
+      this.say(RADIO.omniDefeat);
+      setTimeout(() => Inventory.drop(9007), 1200);
       return;
     }
     this.say(RADIO.bossDefeat);
@@ -326,10 +334,10 @@ const Game = {
   updateTitle() {
     if (Input.hit('mu')) { this.menuSel = (this.menuSel + this.menu.length - 1) % this.menu.length; Sound.sfx.select(); }
     if (Input.hit('md')) { this.menuSel = (this.menuSel + 1) % this.menu.length; Sound.sfx.select(); }
-    // 测试用：数字键 1~0 跳到第一章，Shift + 数字跳到第二章，Alt + 数字跳到第三章
+    // 测试用：数字键 1~0 跳到第一章，Shift + 数字跳到第二章，Alt + 数字跳到第三章，Alt + Shift + 数字跳到第四章
     const shift = !!(Input.raw.ShiftLeft || Input.raw.ShiftRight), alt = !!(Input.raw.AltLeft || Input.raw.AltRight);
     for (let i = 0; i < 10; i++) if (Input.code('Digit' + ((i + 1) % 10))) {
-      const ch = alt ? 3 : shift ? 2 : 1, base = chapterStart(ch), j = base + i;
+      const ch = alt && shift ? 4 : alt ? 3 : shift ? 2 : 1, base = chapterStart(ch), j = base + i;
       if (base < 0 || j >= LEVELS.length || chapterOf(LEVELS[j]) !== ch) return;
       Sound.init(); Sound.sfx.confirm(); this.startLevel(j); return;
     }
@@ -351,7 +359,7 @@ const Game = {
     this.storyT += dt;
     const line = this.storyLines[this.storyIdx] || '';
     const full = this.storyT * 22 >= line.length;
-    if (Input.hit('skip') || Input.hit('pause') || Input.hit('back')) { Sound.sfx.radioOn(); this.startLevel(chapterStart(this.storyCh)); return; }
+    if (Input.hit('skip') || Input.hit('pause') || Input.hit('back')) { Sound.sfx.radioOn(); this.finishStory(); return; }
     if (Input.hit('confirm')) {
       if (!full) this.storyT = line.length / 22 + 0.01;
       else this.advanceStory();
@@ -360,7 +368,13 @@ const Game = {
   },
   advanceStory() {
     this.storyIdx++; this.storyT = 0;
-    if (this.storyIdx >= this.storyLines.length) { Sound.sfx.radioOn(); this.startLevel(chapterStart(this.storyCh)); }
+    if (this.storyIdx >= this.storyLines.length) { Sound.sfx.radioOn(); this.finishStory(); }
+  },
+  // 剧情播完：默认进入该章第一关；playLines 可以指定别的去向（例如结局剧情 → 结算）
+  finishStory() { const done = this.storyDone; this.storyDone = null; if (done) done(); else this.startLevel(chapterStart(this.storyCh)); },
+  playLines(lines, done) {
+    this.storyLines = lines; this.storyDone = done;
+    this.state = 'story'; this.stateT = 0; this.storyIdx = 0; this.storyT = 0;
   },
   updateEnd() {
     if (Input.hit('confirm') && this.stateT > 2) this.leaveEnd();
@@ -481,15 +495,21 @@ const Game = {
     if (this.bossDoneT >= 0) {
       this.bossDoneT += dt;
       if (this.bossDoneT > 3 && !this.radio.cur && !this.radio.queue.length && this.state === 'play' && (!this.pickup || this.pickup.got)) {
-        this.state = 'end'; this.stateT = 0; this.endT = 0; this.endCh = this.chapter;
-        const next = chapterStart(this.endCh + 1);
-        Save.save({ level: next > 0 ? next : 0, deaths: this.deaths, chips: [...this.chips], time: this.runTime });
+        const ch = this.chapter;
+        const toEnd = () => {
+          this.state = 'end'; this.stateT = 0; this.endT = 0; this.endCh = ch;
+          const next = chapterStart(ch + 1);
+          Save.save({ level: next > 0 ? next : 0, deaths: this.deaths, chips: [...this.chips], time: this.runTime });
+        };
+        this.bossDoneT = -1;
+        if (CHAPTERS[ch].epilogue) { this.playLines(CHAPTERS[ch].epilogue, toEnd); Sound.music('ending'); } // 最终章：先播结局剧情
+        else toEnd();
       }
     }
   },
   checkHazards() {
     const p = this.player, w = this.world, hb = p.hurt();
-    if (p.y > w.ph + 40) { this.killPlayer('fall'); return; }
+    if (p.y > w.ph + 40 || p.y + p.h < -40) { this.killPlayer('fall'); return; } // 重力反转时也可能从上方掉出世界
     const x0 = Math.floor(hb.x / TILE), x1 = Math.floor((hb.x + hb.w) / TILE);
     const y0 = Math.floor(hb.y / TILE), y1 = Math.floor((hb.y + hb.h) / TILE);
     for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) {
@@ -572,6 +592,7 @@ const Game = {
     for (const e of this.enemies) if (e.alive && vis(e, 200)) e.draw(ctx, this);
     if (this.state !== 'dead' && !this.player.dead) this.player.draw(ctx, this);
     if (this.matrix) this.matrix.drawOver(ctx, this);
+    if (this.core) this.core.drawOver(ctx, this);
     if (this.world.water) drawWater(ctx, this.world, view, this.t);
     this.drawAlarmLink(ctx);
     for (const pr of this.projectiles) pr.draw(ctx, this);
@@ -591,9 +612,11 @@ const Game = {
       ctx.fillStyle = g; ctx.fillRect(0, 0, VW, VH);
     }
     if (this.matrix) this.matrix.drawScreen(ctx, this);
+    if (this.core) this.core.drawScreen(ctx, this);
     ctx.drawImage(Art.scan, 0, 0);
     this.drawThreatMarkers(ctx, cx, cy);
     this.drawHUD(ctx);
+    if (this.core) this.core.drawHud(ctx, this);
     this.drawRadio(ctx);
     if (this.cardT < 3.2 && this.state !== 'clear') this.drawLevelCard(ctx);
     if (this.flashA > 0) { ctx.globalAlpha = Math.min(1, this.flashA); ctx.fillStyle = this.flashC; ctx.fillRect(0, 0, VW, VH); ctx.globalAlpha = 1; }
@@ -737,14 +760,14 @@ const Game = {
     const inA = Math.min(1, c.t * 6) * R.fade;
     ctx.globalAlpha = inA;
     ctx.fillStyle = 'rgba(6,12,12,0.78)'; ctx.fillRect(x, y, w, h);
-    const glitch = c.who === '???' || R.glitch > 0;
+    const glitch = c.who === '???' || c.who === 'OMNI' || R.glitch > 0;
     ctx.strokeStyle = glitch ? 'rgba(255,60,60,0.7)' : 'rgba(120,255,220,0.45)'; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
     // 波形
     ctx.strokeStyle = glitch ? '#f55' : '#6fd'; ctx.beginPath();
     for (let i = 0; i < 50; i++) { const yy = y + 42 + Math.sin(this.t * 20 + i * 0.7) * (c.t * 30 < c.text.length ? rand(3, 16) : 2); i ? ctx.lineTo(x + 14 + i, yy) : ctx.moveTo(x + 14, yy); }
     ctx.stroke();
     let name = SPEAKERS[c.who] || c.who;
-    if (R.glitch > 0) name = 'Ω-MIND · 万脑';
+    if (R.glitch > 0 || c.who === 'OMNI') name = 'Ω-MIND · 万脑';
     ctx.font = 'bold 13px ' + FONT; ctx.fillStyle = glitch ? '#f66' : '#8fe';
     ctx.fillText(name, x + 78, y + 22);
     ctx.font = '15px ' + FONT; ctx.fillStyle = c.who === 'SYS' ? '#cfc9a0' : glitch ? '#fbb' : '#e8f4f0';
@@ -934,7 +957,7 @@ const Game = {
     ctx.globalAlpha = Math.min(1, Math.max(0, t - 3));
     const hasNext = CHAPTERS[ch + 1] && chapterStart(ch + 1) >= 0;
     ctx.fillStyle = '#c9b88a'; ctx.font = '13px ' + FONT;
-    ctx.fillText(hasNext ? `—— 下一章：${CH_NUM[ch + 1]} · ${CHAPTERS[ch + 1].name} ——` : `—— ${CH_NUM[ch + 1] || '下一章'} 敬请期待 ——`, VW / 2, 470);
+    ctx.fillText(hasNext ? `—— 下一章：${CH_NUM[ch + 1]} · ${CHAPTERS[ch + 1].name} ——` : E.final ? '—— 全剧终 · THE END ——' : `—— ${CH_NUM[ch + 1] || '下一章'} 敬请期待 ——`, VW / 2, 470);
     if (t > 2 && (this.t * 2) % 2 < 1.4) { ctx.fillStyle = 'rgba(150,200,190,0.7)'; ctx.font = '12px ' + FONT; drawHintLine(ctx, VW / 2, 510, ['按', { k: 'confirm' }, hasNext ? '继续' : '返回标题'], { align: 'center', color: 'rgba(150,200,190,0.8)' }); }
     if (t > 2) this.addHot(0, 0, VW, VH, () => this.leaveEnd());
     ctx.textAlign = 'left'; ctx.globalAlpha = 1;
