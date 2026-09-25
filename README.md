@@ -1,3 +1,5 @@
+<p align="center"><img src="logo.svg" alt="LAZARUS" width="720"></p>
+
 # LAZARUS · 第一章 死寂博物馆 / 第二章 进化育婴室 / 第三章 幽灵因特网 / 第四章 至高神座
 
 > 你以为你是来复活人类的救世主。
