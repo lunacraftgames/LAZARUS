@@ -11,7 +11,12 @@ const PL = {
   DJUMP: 640,            // 二段跳（推进囊）
   SLIME_T: 3,            // 粘液：持续 3 秒，跳跃高度减半且不能二段跳
   WATER: { GRAV: 780, MAXFALL: 230, RUN: 190, ACC: 650, DEC: 150, SWIM: 420, SWIM_CD: 0.22, EXIT: 660 }, // 高密度培养液：低重力、惯性大
+  // 第三章
+  LAG: 0.5,              // 掉帧幽灵：输入延迟 0.5 秒
 };
+// 主角读取的输入动作；死锁时移动 / 跳跃 / 冲刺全部失效
+const PL_ACTS = ['left', 'right', 'up', 'down', 'jump', 'dash', 'attack', 'swap'];
+const PL_LOCKED = ['left', 'right', 'up', 'down', 'jump', 'dash'];
 
 // 武器：active = 判定持续时间，cd = 两次出手的间隔，swing = 刀光动画时长，reach = 攻击距离，arc = 刀光半径
 const WPN = {
@@ -32,6 +37,7 @@ class Player {
       spawnT: 0, trail: [], trailT: 0, prevBottom: y + 28, airT: 0,
       atkT: 0, atkCd: 0, atkDown: false, atkHits: new Set(), atkSwing: 0, chargeT: -1, atkHeavy: false,
       jumpsLeft: 1, slimeT: 0, inWater: false, swimCd: 0,
+      lockT: 0, lockImmune: 0, lagT: 0, lagBuf: [], lagOut: null, ctl: {},
     });
   }
   hurt() { return { x: this.x + 4, y: this.y + 6, w: this.w - 8, h: this.h - 8 }; }
@@ -51,13 +57,37 @@ class Player {
   get cx() { return this.x + this.w / 2; }
   get cy() { return this.y + this.h / 2; }
 
+  // 输入：正常时直接读 Input；被掉帧幽灵干扰时读 0.5 秒前的输入；被死锁时移动类输入全部失效
+  control(g) {
+    let s = {}, h = {};
+    for (const a of PL_ACTS) { s[a] = Input.down(a); h[a] = Input.hit(a); }
+    if (this.lagT > 0) {
+      this.lagBuf.push({ t: g.t, s, h });
+      let cur = this.lagOut || s; h = {};
+      while (this.lagBuf.length && this.lagBuf[0].t <= g.t - PL.LAG) { const e = this.lagBuf.shift(); cur = e.s; for (const a in e.h) if (e.h[a]) h[a] = true; }
+      this.lagOut = cur; s = cur;
+    } else if (this.lagBuf.length) {
+      // 延迟结束：还没送达的按键一并补上，不吞键
+      for (const e of this.lagBuf) for (const a in e.h) if (e.h[a]) h[a] = true;
+      this.lagBuf = []; this.lagOut = null;
+    }
+    if (this.lockT > 0) { s = Object.assign({}, s); h = Object.assign({}, h); for (const a of PL_LOCKED) { s[a] = false; h[a] = false; } }
+    return { down: (a) => !!s[a], hit: (a) => !!h[a] };
+  }
+
   update(dt, g) {
-    const I = Input, W = g.world;
+    const W = g.world;
+    if (this.lockT > 0) this.lockT -= dt;
+    if (this.lockImmune > 0) this.lockImmune -= dt;
+    if (this.lagT > 0) this.lagT -= dt;
+    const I = this.control(g);
     this.prevBottom = this.y + this.h;
     if (this.spawnT > 0) this.spawnT -= dt;
     if (this.dashLock > 0) this.dashLock -= dt;
     this.dashCd -= dt; this.dropT -= dt;
     const mx = (I.down('right') ? 1 : 0) - (I.down('left') ? 1 : 0);
+    // 本帧的实际操作（镜像执行官读取它）
+    const ctl = this.ctl = { tick: g.t, mx, jumpHeld: I.down('jump'), jumped: null, dashed: false, dashDir: null };
     if (I.hit('jump')) this.jumpBuf = PL.BUFFER; else this.jumpBuf -= dt;
     if (this.onGround) { this.coyote = PL.COYOTE; if (this.dashT <= 0) this.canDash = true; } else this.coyote -= dt;
     // ---- 培养液（水下低重力）与粘液状态 ----
@@ -80,6 +110,8 @@ class Player {
         this.dashDir = { x: dx / l, y: dy / l };
         this.dashT = PL.DASH_TIME; this.canDash = false; this.dashCd = PL.DASH_CD; this.jumping = false;
         if (dx) this.facing = Math.sign(dx);
+        ctl.dashed = true; ctl.dashDir = this.dashDir;
+        if (g.matrix) g.matrix.spawnEcho(this, g); // 第三章：拉撒路残影
         Sound.sfx.dash(); g.shake(2); g.freeze(0.03); Input.rumble(0.05, 0.35, 70);
         g.particles.burst(this.cx, this.cy, 10, { color: [this.trailColor(g.t, 0), this.trailColor(g.t, 3), '#fff'], smin: 60, smax: 200, lmin: 0.15, lmax: 0.35, szmin: 2, szmax: 3, add: true });
       }
@@ -133,7 +165,7 @@ class Player {
       // 地面冲刺可以接跳跃（长跳）
       if (this.jumpBuf > 0 && this.coyote > 0) {
         this.dashT = 0; this.jumpBuf = 0; this.coyote = 0; this.vx *= 0.75;
-        this.vy = -PL.JUMP; this.jumping = true; Sound.sfx.jump(); this.sx = 0.75; this.sy = 1.3;
+        this.vy = -PL.JUMP; this.jumping = true; Sound.sfx.jump(); this.sx = 0.75; this.sy = 1.3; ctl.jumped = 'ground';
       } else if (this.dashT <= 0) {
         this.vx *= 0.6; this.vy = this.vy < 0 ? this.vy * 0.45 : this.vy * 0.5;
       }
@@ -149,7 +181,7 @@ class Player {
         const nearSurface = !W.pointWater(this.cx, this.y - 6);
         this.vy = nearSurface ? -Wt.EXIT : Math.min(this.vy, 0) - Wt.SWIM * 0.8 - 80;
         this.vy = Math.max(this.vy, -Wt.EXIT);
-        Sound.sfx.swim && Sound.sfx.swim();
+        Sound.sfx.swim && Sound.sfx.swim(); ctl.jumped = 'swim';
         for (let i = 0; i < 5; i++) g.particles.add({ x: this.cx + rand(-8, 8), y: this.y + this.h, vx: rand(-20, 20), vy: rand(-60, -20), life: rand(0.5, 1), size: rand(2, 4), color: 'rgba(180,240,255,0.8)', shape: 'ring' });
       }
       if (Math.random() < 0.06) g.particles.add({ x: this.cx + rand(-4, 4), y: this.y + 4, vx: rand(-10, 10), vy: rand(-50, -30), life: 1, size: 2, color: 'rgba(180,240,255,0.7)', shape: 'ring' });
@@ -170,14 +202,14 @@ class Player {
         if (this.onGround && this.groundOneWay && I.down('down')) { this.dropT = 0.22; this.onGround = false; }
         else {
           this.vy = -PL.JUMP * (this.slimeT > 0 ? 0.71 : 1); this.jumping = true; this.onGround = false; this.sx = 0.75; this.sy = 1.3;
-          Sound.sfx.jump();
+          Sound.sfx.jump(); ctl.jumped = 'ground';
           g.particles.burst(this.cx, this.y + this.h, 6, { color: this.slimeT > 0 ? '#8f4' : '#8a8070', smin: 20, smax: 80, angle: -Math.PI / 2, spread: 1.3, lmin: 0.2, lmax: 0.4, grav: 200 });
         }
       } else if (this.jumpBuf > 0 && !this.onGround && this.coyote <= 0 && this.jumpsLeft > 0 && Inventory.ability('doubleJump')) {
         // ---- 二段跳（推进囊）；被粘液粘住时不可用 ----
         if (this.slimeT > 0) { if (I.hit('jump')) { Sound.sfx.denied(); g.hudSlime = 0.6; } }
         else {
-          this.jumpBuf = 0; this.jumpsLeft = 0;
+          this.jumpBuf = 0; this.jumpsLeft = 0; ctl.jumped = 'double';
           this.vy = -PL.DJUMP; this.jumping = true; this.sx = 0.8; this.sy = 1.25;
           Sound.sfx.djump ? Sound.sfx.djump() : Sound.sfx.jump();
           g.particles.add({ x: this.cx, y: this.y + this.h, size: 4, grow: 90, life: 0.3, shape: 'ring', color: '#7ff', add: true });

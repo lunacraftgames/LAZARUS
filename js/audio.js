@@ -178,6 +178,23 @@ const Sound = (() => {
     saw() { tone({ type: 'sawtooth', f: 900, f2: 700, dur: 0.12, vol: 0.02, filter: 'highpass', ff: 1200 }); },
     heartbeat() { tone({ type: 'sine', f: 70, f2: 40, dur: 0.16, vol: 0.35 }); tone({ type: 'sine', f: 60, f2: 35, dur: 0.18, vol: 0.28, t: 0.2 }); },
     hatch() { noise({ f: 1200, f2: 200, dur: 0.3, vol: 0.2 }); tone({ type: 'square', f: 180, f2: 90, dur: 0.2, vol: 0.06 }); },
+    // 第三章
+    echo() { tone({ type: 'square', f: 1600, f2: 400, dur: 0.16, vol: 0.035, filter: 'bandpass', ff: 1800, q: 3 }); tone({ type: 'sine', f: 880, dur: 0.3, vol: 0.03, t: 0.05, send: 0.6 }); },
+    plate() { tone({ type: 'square', f: N(72), dur: 0.05, vol: 0.05 }); tone({ type: 'square', f: N(79), dur: 0.08, vol: 0.04, t: 0.05 }); },
+    gateOpen() { [60, 64, 67, 72].forEach((n, i) => tone({ type: 'square', f: N(n + 12), dur: 0.1, vol: 0.045, t: i * 0.06, filter: 'lowpass', ff: 3000 })); noise({ filter: 'highpass', f: 3000, dur: 0.3, vol: 0.08 }); },
+    gateClose() { tone({ type: 'square', f: N(67), f2: N(55), dur: 0.14, vol: 0.05, filter: 'lowpass', ff: 2000 }); },
+    lock() { for (let i = 0; i < 3; i++) tone({ type: 'square', f: 140 - i * 20, dur: 0.1, vol: 0.12, t: i * 0.09, filter: 'lowpass', ff: 1200 }); noise({ filter: 'bandpass', f: 600, dur: 0.3, vol: 0.2, q: 4 }); },
+    glitch() { for (let i = 0; i < 4; i++) tone({ type: 'square', f: rand(200, 2400), dur: 0.03, vol: 0.03, t: i * 0.035 }); },
+    lagField() { tone({ type: 'sine', f: 900, f2: 110, dur: 1.1, vol: 0.12, glide: 1.1, send: 0.6 }); noise({ filter: 'lowpass', f: 1500, f2: 200, dur: 0.8, vol: 0.12 }); },
+    bubble() { tone({ type: 'sine', f: 500, f2: 1400, dur: 0.12, vol: 0.14 }); noise({ filter: 'highpass', f: 3000, dur: 0.12, vol: 0.12 }); },
+    screech() { noise({ filter: 'bandpass', f: 3400, f2: 5200, dur: 0.5, vol: 0.28, q: 6 }); tone({ type: 'sawtooth', f: 1900, f2: 2600, dur: 0.45, vol: 0.05, vib: 40, vibAmt: 300 }); },
+    mineArm() { tone({ type: 'square', f: 1200, dur: 0.06, vol: 0.07 }); tone({ type: 'square', f: 600, dur: 0.12, vol: 0.07, t: 0.07 }); },
+    mineBeep() { tone({ type: 'square', f: 1500, dur: 0.035, vol: 0.045 }); },
+    erase() { noise({ filter: 'bandpass', f: 4000, f2: 200, dur: 0.45, vol: 0.3, q: 1.5 }); tone({ type: 'sawtooth', f: 800, f2: 60, dur: 0.4, vol: 0.08 }); },
+    ir() { tone({ type: 'sawtooth', f: 2200, f2: 400, dur: 0.1, vol: 0.03 }); },
+    mirrorWake() { tone({ type: 'sawtooth', f: 220, f2: 110, dur: 0.35, vol: 0.08, filter: 'lowpass', ff: 1500 }); tone({ type: 'sawtooth', f: 110, f2: 220, dur: 0.35, vol: 0.08, filter: 'lowpass', ff: 1500 }); },
+    mirrorHit() { noise({ filter: 'highpass', f: 2500, dur: 0.25, vol: 0.25 }); for (let i = 0; i < 5; i++) tone({ type: 'square', f: rand(300, 3000), dur: 0.04, vol: 0.05, t: i * 0.04 }); },
+    bossForm() { for (let i = 0; i < 8; i++) tone({ type: 'square', f: 200 + i * 90, dur: 0.05, vol: 0.04, t: i * 0.07, filter: 'lowpass', ff: 2500 }); tone({ type: 'sine', f: 60, f2: 120, dur: 1.2, vol: 0.2, attack: 0.6 }); },
     clear() {
       [69, 72, 76, 81, 84].forEach((n, i) => tone({ type: 'square', f: N(n), dur: 0.14, vol: 0.06, t: i * 0.09, filter: 'lowpass', ff: 3500 }));
       [69, 72, 76].forEach((n) => tone({ type: 'triangle', f: N(n + 12), dur: 1.2, vol: 0.06, t: 0.45, send: 0.5 }));
@@ -279,6 +296,36 @@ const Sound = (() => {
           const mel = [69, 72, 71, 67, 69, 76, 74, 72, 65, 69, 67, 64, 67, 71, 74, 71];
           tone({ type: 'square', f: N(mel[(Math.floor(s / 4)) % 16]), at, dur: spb * 3, vol: 0.035, filter: 'lowpass', ff: 2500, bus, send: 0.3 });
         }
+      },
+    },
+    // 第三章：幽灵因特网——冰冷的方波琶音、错拍的数字噪声
+    matrix: {
+      bpm: 112,
+      step(s, at, bus, spb) {
+        const chords = [[57, 60, 64], [53, 57, 60], [55, 59, 62], [52, 55, 59]];
+        const bar = Math.floor(s / 16) % 4, st = s % 16, ch = chords[bar];
+        if (st === 0) for (const n of ch) tone({ type: 'sawtooth', f: N(n - 12), at, dur: spb * 16, vol: 0.016, attack: spb * 4, filter: 'lowpass', ff: 900, bus });
+        if (st % 4 === 0) tone({ type: 'triangle', f: N(ch[0] - 24), at, dur: spb * 2, vol: 0.14, bus });
+        const seq = [0, 1, 2, 1, 2, 0, 1, 2, 0, 2, 1, 2, 0, 1, 2, 1];
+        tone({ type: 'square', f: N(ch[seq[st]] + 12 + (st === 14 ? 12 : 0)), at, dur: spb * 0.6, vol: 0.02, filter: 'lowpass', ff: 2400, bus, send: 0.35 });
+        if (st === 0 || st === 10) tone({ type: 'sine', f: 100, f2: 40, at, dur: 0.18, vol: 0.16, bus });
+        if (st === 4 || st === 12) noise({ filter: 'highpass', f: 5000, dur: 0.05, vol: 0.05, at, bus });
+        if (st % 2 === 1 && Math.random() < 0.3) tone({ type: 'square', f: rand(1500, 4000), at, dur: 0.02, vol: 0.012, bus });
+        if (Math.floor(s / 64) % 2 === 1 && st === 8) tone({ type: 'sine', f: N(ch[2] + 24), at, dur: 1.4, vol: 0.04, bus, send: 0.7 });
+      },
+    },
+    // 镜像拉撒路：主旋律正着弹一遍，再倒着弹一遍
+    mirror: {
+      bpm: 140,
+      step(s, at, bus, spb) {
+        const roots = [45, 41, 43, 40], bar = Math.floor(s / 16) % 4, st = s % 16, r = roots[bar];
+        if (st % 4 === 0) tone({ type: 'sine', f: 140, f2: 42, at, dur: 0.2, vol: 0.4, bus });
+        if (st === 4 || st === 12) noise({ filter: 'bandpass', f: 2600, dur: 0.1, vol: 0.18, at, bus });
+        if (st % 2 === 1) noise({ filter: 'highpass', f: 9000, dur: 0.02, vol: 0.04, at, bus });
+        tone({ type: 'square', f: N(r - 12 + (st % 8 < 4 ? 0 : 12)), at, dur: spb * 0.8, vol: 0.05, filter: 'lowpass', ff: 1100, bus });
+        const mel = [69, 72, 76, 74, 72, 71, 67, 69], k = Math.floor(s / 2) % 16, idx = k < 8 ? k : 15 - k;
+        if (st % 2 === 0 && Math.floor(s / 64) % 4 > 0) tone({ type: 'square', f: N(mel[idx] + (bar % 2 ? 0 : 12)), at, dur: spb * 1.6, vol: 0.03, filter: 'lowpass', ff: 3200, bus, send: 0.3 });
+        if (Math.random() < 0.06) tone({ type: 'square', f: rand(200, 3000), at, dur: 0.03, vol: 0.02, bus });
       },
     },
     museum: makeMuseum(80, true),

@@ -174,6 +174,7 @@ Object.assign(Game, {
   // 远程攻击打 Boss：巨像1号只会被打断瞄准；繁育者核心暴露时可以打
   shotBoss(s) {
     const B = this.boss, b = s.box;
+    if (B.onShot) { B.onShot(s, this); return; } // 第三章起：Boss 自己处理远程攻击
     if (typeof Colossus !== 'undefined' && B instanceof Colossus) {
       if (s.type === 'wave' || s.type === 'cloud') return;
       const e = B.eye();
