@@ -119,7 +119,7 @@ class Player {
     if (I.hit('dash')) {
       if (this.dashLock > 0) { Sound.sfx.denied(); g.hudDeny = 0.6; Input.rumble(0.3, 0, 120); }
       else if (this.canDash && this.dashCd <= 0) {
-        let dx = mx, dy = I.down('down') ? 1 : 0; // 「向上」只用来瞄准，不会向上冲刺
+        let dx = mx, dy = (I.down('down') ? 1 : 0) - (I.down('up') ? 1 : 0); // 同时按住「向上」+ 冲刺 = 向上冲刺
         if (this.onGround && dy > 0) dy = 0;
         if (!dx && !dy) dx = this.facing;
         const l = Math.hypot(dx, dy);
