@@ -903,7 +903,8 @@ const Game = {
       ctx.fillText(text, VW / 2, y0 - d * 44 + 20);
     }
     ctx.font = '12px ' + FONT; ctx.fillStyle = 'rgba(150,200,190,0.5)';
-    drawHintLine(ctx, VW / 2, VH - 30, [{ k: 'confirm' }, '继续', { k: 'skip' }, '跳过'], { align: 'center', color: 'rgba(150,200,190,0.6)' });
+    // Enter 同时是「跳过」且优先判断，所以「继续」提示跳跃键（键盘默认空格，手柄即确认键）
+    drawHintLine(ctx, VW / 2, VH - 30, [{ k: 'jump' }, '继续', { k: 'skip' }, '跳过'], { align: 'center', color: 'rgba(150,200,190,0.6)' });
     ctx.textAlign = 'left';
     ctx.drawImage(Art.vignette, 0, 0);
   },
