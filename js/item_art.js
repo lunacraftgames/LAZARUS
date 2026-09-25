@@ -365,7 +365,22 @@ const ItemArt = (() => {
     ctx.restore();
     glow(ctx, 40, 0, 70, '255,77,109', 0.22);
   }
-  const ART = { datablade: { fn: datablade, rot: -0.1, s: 0.95 }, fist: { fn: fist, rot: 0, s: 0.95 }, brush: { fn: brush, rot: 0, s: 1 }, sabre: { fn: sabre, rot: -0.12, s: 0.95 }, relicBlade: { fn: relic, rot: -0.1, s: 0.9 }, dashStrike: { fn: dash, rot: 0, s: 1 }, doubleJump: { fn: thruster, rot: 0, s: 0.85 }, flintlock: { fn: flintlock, rot: -0.06, s: 0.95 }, sporeGun: { fn: spore, rot: -0.05, s: 1.05 } };
+  // ---------------- 信使的信号枪 ----------------
+  function flaregun(ctx, t) {
+    // 粗短的橙色枪管 + 白色握把，枪口冒着一颗信号弹
+    ctx.fillStyle = lg(ctx, 0, -26, 0, 22, [[0, '#ffc07a'], [0.5, '#ff9a3c'], [1, '#a4561a']]);
+    ctx.fillRect(-60, -26, 120, 44);
+    ctx.fillStyle = '#5a4636'; ctx.fillRect(56, -30, 14, 52); ctx.fillRect(-64, -22, 10, 36);
+    ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fillRect(-56, -22, 108, 6);
+    ctx.fillStyle = lg(ctx, 0, 10, 0, 90, [[0, '#f4efe4'], [1, '#b8b0a0']]);
+    ctx.beginPath(); ctx.moveTo(-50, 18); ctx.lineTo(-18, 18); ctx.lineTo(-24, 92); ctx.lineTo(-62, 92); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#5a4636'; ctx.lineWidth = 3; ctx.stroke();
+    ctx.beginPath(); ctx.arc(-8, 30, 12, 0, Math.PI); ctx.stroke();
+    const pulse = 0.6 + 0.4 * Math.sin(t * 6);
+    glow(ctx, 92, -4, 46 * pulse + 20, '255,154,60', 0.45);
+    ctx.fillStyle = '#fff4d8'; ctx.beginPath(); ctx.arc(92, -4, 9, 0, 7); ctx.fill();
+  }
+  const ART = { flare: { fn: flaregun, rot: -0.08, s: 0.9 }, datablade: { fn: datablade, rot: -0.1, s: 0.95 }, fist: { fn: fist, rot: 0, s: 0.95 }, brush: { fn: brush, rot: 0, s: 1 }, sabre: { fn: sabre, rot: -0.12, s: 0.95 }, relicBlade: { fn: relic, rot: -0.1, s: 0.9 }, dashStrike: { fn: dash, rot: 0, s: 1 }, doubleJump: { fn: thruster, rot: 0, s: 0.85 }, flintlock: { fn: flintlock, rot: -0.06, s: 0.95 }, sporeGun: { fn: spore, rot: -0.05, s: 1.05 } };
 
   function draw(ctx, key, cx, cy, t, own) {
     const A = ART[key]; if (!A) return false;

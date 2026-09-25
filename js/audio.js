@@ -180,6 +180,10 @@ const Sound = (() => {
     heartbeat() { tone({ type: 'sine', f: 70, f2: 40, dur: 0.16, vol: 0.35 }); tone({ type: 'sine', f: 60, f2: 35, dur: 0.18, vol: 0.28, t: 0.2 }); },
     hatch() { noise({ f: 1200, f2: 200, dur: 0.3, vol: 0.2 }); tone({ type: 'square', f: 180, f2: 90, dur: 0.2, vol: 0.06 }); },
     // 第三章
+    hook() { tone({ type: 'square', f: 1400, f2: 700, dur: 0.06, vol: 0.04 }); tone({ type: 'triangle', f: 220, dur: 0.08, vol: 0.08, t: 0.05 }); noise({ f: 3000, dur: 0.04, vol: 0.06, t: 0.05 }); },
+    hookMiss() { tone({ type: 'square', f: 900, f2: 500, dur: 0.08, vol: 0.03 }); },
+    flare() { noise({ f: 2400, f2: 600, dur: 0.14, vol: 0.14 }); tone({ type: 'sine', f: 660, f2: 990, dur: 0.12, vol: 0.05 }); },
+    stun() { tone({ type: 'triangle', f: N(84), dur: 0.08, vol: 0.05 }); tone({ type: 'triangle', f: N(88), dur: 0.08, vol: 0.05, t: 0.07 }); tone({ type: 'triangle', f: N(91), dur: 0.12, vol: 0.04, t: 0.14 }); },
     rewind() { tone({ type: 'sine', f: 300, f2: 1400, dur: 0.25, vol: 0.05 }); tone({ type: 'square', f: 1400, f2: 300, dur: 0.2, vol: 0.02, t: 0.1, filter: 'lowpass', ff: 2200 }); },
     echo() { tone({ type: 'square', f: 1600, f2: 400, dur: 0.16, vol: 0.035, filter: 'bandpass', ff: 1800, q: 3 }); tone({ type: 'sine', f: 880, dur: 0.3, vol: 0.03, t: 0.05, send: 0.6 }); },
     plate() { tone({ type: 'square', f: N(72), dur: 0.05, vol: 0.05 }); tone({ type: 'square', f: N(79), dur: 0.08, vol: 0.04, t: 0.05 }); },
@@ -524,6 +528,30 @@ const Sound = (() => {
         if (s % 32 === 28) tone({ type: 'sine', f: 1800, f2: 180, at, dur: spb * 4, vol: 0.014, bus, send: 0.5 });   // 回溯：向下扫
         const fwd = [76, 79, 83, 86, 88], k = s % 64; // 镜像动机：第一小节正放，第二小节倒放
         if (Math.floor(s / 64) % 2 === 1 && k < 20 && k % 2 === 0) { const i = k / 2; const n = i < 5 ? fwd[i] : fwd[9 - i]; tone({ type: 'square', f: N(n), at, dur: 0.1, vol: 0.022, filter: 'lowpass', ff: 3000, bus, send: 0.5 }); }
+      },
+    },
+    // 信使：轻盈的「风」——旋律换成柔和的正弦 / 三角波、拉长余音并多加混响，锯齿波铺底换成轻柔的三角波；
+    // 加一层风声（慢慢起伏的滤波噪声）、像荡秋千一样左右来回的琶音，以及每 4 小节一次的摩尔斯电码「E · V · A」
+    breeze: {
+      tempo: 0.96,
+      tone(o) {
+        o = Object.assign({}, o);
+        if (o.f2 && o.f < 200) { o.vol = (o.vol || 0.2) * 0.7; o.dur = Math.min(o.dur, 0.18); return o; } // 底鼓：更轻
+        if (o.type === 'sawtooth') { o.type = 'triangle'; o.vol = (o.vol || 0.2) * 1.2; o.send = Math.max(o.send || 0, 0.35); return o; } // 铺底：柔和
+        if (o.f > 300 && (o.type === 'square' || o.type === 'sine' || o.type === 'triangle')) {
+          o.type = o.f > 700 ? 'sine' : 'triangle'; o.vol = (o.vol || 0.2) * 1.15; // 旋律：像口哨
+          o.dur = Math.min(o.dur * 1.4, 2); o.send = Math.max(o.send || 0, 0.5);
+        }
+        return o;
+      },
+      extra(s, at, bus, spb, name) {
+        if (QUIET[name]) return;
+        if (s % 16 === 0) noise({ filter: 'bandpass', f: 700 + (s % 64) * 12, f2: 1400, q: 0.8, dur: spb * 12, vol: 0.018, attack: spb * 5, at, bus }); // 风声
+        const swing = [72, 79, 76, 84, 76, 79], k = s % 32; // 荡秋千的琶音：左右来回
+        if (k % 4 === 2 && Math.floor(s / 32) % 2 === 0) tone({ type: 'triangle', f: N(swing[(k / 4 | 0) % swing.length]), at, dur: spb * 1.6, vol: 0.022, bus, send: 0.6 });
+        // 摩尔斯电码 E(·) V(···-) A(·-)：1 = 短，3 = 长，0 = 间隔；每 4 小节在第 3 小节出现一次
+        const morse = [1, 0, 0, 1, 0, 1, 0, 1, 0, 3, 0, 0, 1, 0, 3], m = s % 64 - 32;
+        if (m >= 0 && m < morse.length && morse[m]) tone({ type: 'sine', f: 1320, at, dur: spb * (morse[m] === 3 ? 0.75 : 0.25), vol: 0.02, bus, send: 0.3 });
       },
     },
   };

@@ -78,9 +78,29 @@ const CHARACTERS = {
     unlockText: '通关第三章「幽灵因特网」后解锁',
     unlocked: () => !!(Inventory.p && Inventory.p.ch3Clear),
   },
+  eva: {
+    id: 'eva', name: '信使', en: 'EVA-0', model: 'EVA-0 信使原型机',
+    color: '#ff9a3c', w: 18, h: 26,
+    // 轻：跑得稍快、跳得稍矮；没有冲刺和二段跳，靠抓钩摆荡和滑翔翼
+    pl: { RUN: 260, ACC_A: 1500, JUMP: 715, H: 26 },
+    music: 'breeze', // 背景音乐的演奏风格（见 audio.js 的 STYLES）
+    weapon: 'flare', draw: 'drawEva', noDoubleJump: true, noCrouch: true, grapple: true, glide: true,
+    hookRange: 232,  // 抓钩射程（约 7 格）
+    stunT: 2.6,      // 信号枪：敌人眩晕时长
+    bio: '避难所里的人类照着伊娃留下的图纸，用降落伞布、自行车链条和一副老式护目镜拼出来的原型机。它不是战斗机器——它是一个信使，要把一封信送到世界的尽头。',
+    skills: [
+      ['抓钩', '冲刺键：朝斜上方射出钩子（按住 ↑ = 正上方），钩住墙或天花板就挂在上面；← → 荡秋千，↑ ↓ 收放绳子，跳跃键松手并借力弹起'],
+      ['滑翔翼', '空中按住跳跃：展开布料滑翔翼缓慢下落；被粘液粘住时展不开'],
+      ['信号枪', '专属远程武器：信号弹不致死，只会把敌人打晕约 2.6 秒——趁它晕着踩头收尾'],
+      ['轻型机体', '攻击力最弱；没有冲刺和二段跳、不能下蹲，不能使用拉撒路的武器'],
+    ],
+    stats: { 机动: 4, 跳跃: 3, 攀爬: 4, 火力: 1 },
+    unlockText: '集齐全部记忆芯片（解锁隐藏结局）后解锁',
+    unlocked: () => !!(Inventory.p && Inventory.p.hiddenEnd),
+  },
 };
-const CHAR_ORDER = ['lazarus', 'scrubber', 'atlas', 'vesper'];
-const CHAR_ROW = CHAR_ORDER.length > 3 ? 56 : 66; // 角色界面列表每行高度
+const CHAR_ORDER = ['lazarus', 'scrubber', 'atlas', 'vesper', 'eva'];
+const CHAR_ROW = CHAR_ORDER.length > 4 ? 48 : CHAR_ORDER.length > 3 ? 56 : 66; // 角色界面列表每行高度
 function charDef(id) { return CHARACTERS[id] || CHARACTERS.lazarus; }
 // 背景音乐跟着角色换演奏风格
 function applyCharMusic(id) { Sound.setStyle(charDef(id).music || null); }
@@ -574,6 +594,172 @@ Object.assign(Player.prototype, {
     ctx.beginPath(); ctx.arc(6, 0, 32, a0, a1); ctx.stroke();
     ctx.fillStyle = `rgba(255,200,210,${1 - k})`;
     for (let i = 0; i < 6; i++) { const a = lerp(a0, a1, i / 5); ctx.fillRect(6 + Math.cos(a) * (34 + rand(-3, 6)), Math.sin(a) * (34 + rand(-3, 6)), 3, 3); }
+    ctx.restore();
+  },
+});
+
+// ============================================================
+//  信使：抓钩摆荡、滑翔翼、信号枪
+// ============================================================
+// 信使的专属武器：信号枪（远程，只会把敌人打晕）
+WPN.flare = { gun: true, cd: 0.42 };
+WEAPON_INFO.flare = { name: '信号枪', en: 'FLARE' };
+Object.assign(Player.prototype, {
+  // 抓钩：沿斜上方（按住 ↑ = 正上方）找第一块实心瓦片，钩住就挂上去；已经挂着时再按一次 = 松手
+  evaFire(g, I, ctl) {
+    const rehook = !!this.hook;
+    if (rehook) this.evaRelease(g, false); // 挂着时再按一次：松手并立刻重新出钩
+    if (this.dashLock > 0) { Sound.sfx.denied(); g.hudDeny = 0.6; Input.rumble(0.3, 0, 120); return; }
+    if ((this.hookCd > 0 && !rehook) || this.inWater) return;
+    const W = g.world, gd = this.gd || 1, mx = (I.down('right') ? 1 : 0) - (I.down('left') ? 1 : 0);
+    let dx = mx || this.facing; const dy = -1;
+    if (I.down('up') && !mx) dx = 0;
+    const l = Math.hypot(dx, dy), ux = dx / l, uy = dy / l * gd; // 重力反转时「上」指向自己的头顶
+    const ox = this.cx, oy = this.cy - gd * 6, R = this.C.hookRange;
+    let hit = null;
+    for (let d = 8; d <= R; d += 4) {
+      const x = ox + ux * d, y = oy + uy * d;
+      if (x < 0 || x > W.pw || y < 0 || y > W.ph) break;
+      const tx = Math.floor(x / TILE), ty = Math.floor(y / TILE);
+      if (!W.solidAt(tx, ty)) continue;
+      hit = { x: ox + ux * (d - 2), y: oy + uy * (d - 2) };
+      // 打在墙面上、上方 2 格内就是台子边缘：钩子吸到边角上，收绳到底会自动翻上台子
+      const side = ux !== 0 && Math.floor((x - ux * 4) / TILE) !== tx;
+      if (side && gd > 0) for (let k = 0; k <= 2; k++) {
+        if (!W.solidAt(tx, ty - k)) break;
+        if (!W.solidAt(tx, ty - k - 1) && !W.solidAt(tx, ty - k - 2)) { hit = { x: ux > 0 ? tx * TILE + 2 : (tx + 1) * TILE - 2, y: (ty - k) * TILE + 2, lip: { tx, ty: ty - k, dir: Math.sign(ux) } }; break; }
+      }
+      break;
+    }
+    this.hookCd = 0.22; ctl.dashed = true; ctl.dashDir = { x: ux, y: uy };
+    if (g.matrix) g.matrix.spawnEcho(this, g); // 第三章：残影留在出钩的位置
+    const end = hit || { x: ox + ux * R, y: oy + uy * R };
+    this.hookFx = { x: end.x, y: end.y, t: 0, miss: !hit };
+    if (dx) this.facing = Math.sign(dx);
+    if (!hit) { Sound.sfx.hookMiss(); return; }
+    this.hook = { x: hit.x, y: hit.y, L: Math.max(36, Math.hypot(this.cx - hit.x, this.cy - hit.y)), t: 0, lip: hit.lip || null };
+    this.jumping = false; this.gliding = false;
+    Sound.sfx.hook(); g.shake(1); Input.rumble(0.05, 0.3, 50);
+    g.particles.burst(hit.x, hit.y, 8, { color: ['#ffd9a0', '#ff9a3c', '#fff'], shape: 'spark', smin: 60, smax: 200, lmin: 0.1, lmax: 0.3, add: true });
+  },
+  // 松开抓钩；jump = 用跳跃键松手，顺势往上弹一下（本地坐标）
+  evaRelease(g, jump) {
+    this.hook = null; this.hookCd = 0.12;
+    if (jump) { this.vy = Math.min(this.vy, 0) - 330; this.vx *= 1.1; this.jumping = false; Sound.sfx.jump(); this.sx = 0.8; this.sy = 1.25; }
+  },
+  // 收绳到台子边缘：翻上去站好
+  evaMantle(g) {
+    const L = this.hook.lip, W = g.world, y = L.ty * TILE - this.h;
+    const x = L.dir > 0 ? L.tx * TILE + 2 : (L.tx + 1) * TILE - this.w - 2;
+    if (!this.boxFree(W, x, y)) return false;
+    this.x = x; this.y = y; this.vx = L.dir * 60; this.vy = 0; this.hook = null; this.hookCd = 0.15; this.jumping = false; this.onGround = true; this.coyote = PL.COYOTE;
+    this.sx = 1.25; this.sy = 0.8; Sound.sfx.land();
+    g.particles.burst(this.cx, this.y + this.h, 6, { color: ['#8a8070', '#ff9a3c'], smin: 20, smax: 90, angle: -Math.PI / 2, spread: 1.4, lmin: 0.2, lmax: 0.4, grav: 300 });
+    return true;
+  },
+  // 空中（本地坐标）：挂着时收放绳子、跳跃松手、落地自动松手；没挂着时按住跳跃 = 滑翔
+  evaAir(dt, g, I, ctl) {
+    const h = this.hook;
+    if (h) {
+      h.t += dt; this.gliding = false;
+      if (I.down('up')) h.L = Math.max(36, h.L - 200 * dt);
+      else if (I.down('down')) h.L = Math.min(this.C.hookRange + 40, h.L + 200 * dt);
+      if (h.lip && Math.hypot(this.cx - h.x, this.cy - h.y) < 46 && this.evaMantle(g)) return;
+      if (this.jumpBuf > 0) { this.jumpBuf = 0; this.evaRelease(g, true); ctl.jumped = 'hook'; }
+      else if (this.onGround && h.t > 0.15) this.evaRelease(g, false);
+      return;
+    }
+    this.gliding = !this.onGround && I.down('jump') && this.vy > 60 && this.slimeT <= 0;
+    if (this.gliding) {
+      if (this.vy > 105) this.vy = Math.max(105, this.vy - 3200 * dt); // 下落速度压到 105
+      this.vx = clamp(this.vx, -210, 210); // 滑翔比约 2 : 1
+      if (Math.random() < 0.15) g.particles.add({ x: this.cx + rand(-12, 12), y: this.y + rand(0, 6) * (this.gd || 1), vx: -this.vx * 0.2, vy: rand(-10, 10), life: 0.5, size: 2, color: 'rgba(255,240,220,0.5)' });
+    } else if (!this.onGround && I.hit('jump') && this.slimeT > 0) { Sound.sfx.denied(); g.hudSlime = 0.6; }
+  },
+  // 绳子约束（世界坐标）：比绳长更远就拉回圆周上，并去掉向外的速度
+  evaRope(dt, g) {
+    if (this.hookCd > 0) this.hookCd -= dt;
+    if (this.hookFx) { this.hookFx.t += dt; if (this.hookFx.t > 0.22) this.hookFx = null; }
+    const h = this.hook; if (!h) return;
+    if (this.inWater || g.state !== 'play') { this.hook = null; return; }
+    const W = g.world, dx = this.cx - h.x, dy = this.cy - h.y, d = Math.hypot(dx, dy);
+    if (d > this.C.hookRange * 1.8) { this.hook = null; return; } // 被机关推得太远：绳子断开
+    if (d <= h.L || d < 1) return;
+    const nx = dx / d, ny = dy / d;
+    W.moveX(this, h.x + nx * h.L - this.cx); W.moveY(this, h.y + ny * h.L - this.cy);
+    const vr = this.vx * nx + this.vy * ny;
+    if (vr > 0) { this.vx -= nx * vr; this.vy -= ny * vr; }
+  },
+  // 绳子和钩子（在重力翻转之外画，用世界坐标）
+  drawRope(ctx, g) {
+    const h = this.hook, fx = this.hookFx;
+    if (!h && !fx) return;
+    const hx = this.cx, hy = this.cy - (this.gd || 1) * 6;
+    let ex, ey, a = 1;
+    if (h) { ex = h.x; ey = h.y; } else { const k = Math.min(1, fx.t / 0.08); ex = lerp(hx, fx.x, fx.miss ? Math.min(1, k) * (1 - Math.max(0, fx.t - 0.1) / 0.12) : k); ey = lerp(hy, fx.y, fx.miss ? Math.min(1, k) * (1 - Math.max(0, fx.t - 0.1) / 0.12) : k); a = fx.miss ? 0.6 : 1; }
+    ctx.save(); ctx.globalAlpha = a;
+    ctx.strokeStyle = '#3a2a1c'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(ex, ey); ctx.stroke();
+    ctx.strokeStyle = '#e8d2a8'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = '#c9c7c0'; ctx.fillRect(ex - 3, ey - 3, 6, 6); ctx.fillStyle = '#ff9a3c'; ctx.fillRect(ex - 1, ey - 1, 2, 2);
+    ctx.restore();
+  },
+  // 信使：白橙配色的轻型机体，老式护目镜，背后一对布料滑翔翼（滑翔时展开）
+  drawEva(ctx, x, y, facing, sx, sy, g, tint) {
+    const t = g.t;
+    ctx.save();
+    ctx.translate(Math.round(x + this.w / 2), Math.round(y + this.h));
+    ctx.scale(facing * sx, sy);
+    const c = tint ? { w: tint, o: tint, d: tint, g: tint, cl: tint } : { w: '#ece6da', o: '#ff9a3c', d: '#5a4636', g: '#9fd8ff', cl: '#f3e3c3' };
+    const air = !this.onGround, moving = !air && Math.abs(this.vx) > 20, ph = this.run;
+    // 滑翔翼：滑翔时向两侧展开，平时折叠在背后
+    if (this.gliding) {
+      const flap = Math.sin(t * 10) * 1.5;
+      ctx.fillStyle = c.cl; ctx.beginPath(); ctx.moveTo(-3, -22); ctx.lineTo(-26, -18 + flap); ctx.lineTo(-20, -12 + flap); ctx.lineTo(-3, -14); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(3, -22); ctx.lineTo(24, -19 - flap); ctx.lineTo(19, -13 - flap); ctx.lineTo(3, -14); ctx.closePath(); ctx.fill();
+      if (!tint) { ctx.fillStyle = c.o; ctx.fillRect(-24, -18 + flap, 5, 2); ctx.fillRect(18, -19 - flap, 5, 2); ctx.strokeStyle = c.d; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(-3, -22); ctx.lineTo(-26, -18 + flap); ctx.moveTo(3, -22); ctx.lineTo(24, -19 - flap); ctx.stroke(); }
+    } else {
+      const sway = air ? -2 : moving ? Math.sin(ph * 2) : 0;
+      ctx.fillStyle = c.cl; ctx.beginPath(); ctx.moveTo(-3, -22); ctx.lineTo(-11 + sway, -8); ctx.lineTo(-6 + sway, -7); ctx.lineTo(-1, -15); ctx.closePath(); ctx.fill();
+      if (!tint) { ctx.fillStyle = c.o; ctx.fillRect(-10 + sway, -9, 4, 2); }
+    }
+    // 腿
+    let l1 = -4, l2 = 1;
+    if (moving) { l1 += Math.sin(ph) * 3.5; l2 -= Math.sin(ph) * 3.5; } else if (air) { l1 = -5; l2 = 2; }
+    ctx.fillStyle = c.d; ctx.fillRect(l1, -9, 3, 9); ctx.fillRect(l2, -9, 3, 9);
+    ctx.fillStyle = c.o; ctx.fillRect(l1 - 1, -2, 4, 2); ctx.fillRect(l2 - 1, -2, 4, 2);
+    // 身体：白色外壳 + 橙色条纹 + 背后的绳索卷盘
+    ctx.fillStyle = c.w; ctx.fillRect(-6, -19, 12, 11);
+    ctx.fillStyle = c.o; ctx.fillRect(-6, -14, 12, 2);
+    ctx.fillStyle = c.d; ctx.fillRect(-8, -18, 3, 6);
+    // 头 + 老式护目镜
+    ctx.fillStyle = c.w; ctx.fillRect(-5, -26, 10, 7);
+    ctx.fillStyle = c.d; ctx.fillRect(-5, -24, 11, 3);
+    ctx.fillStyle = c.g; ctx.fillRect(1, -24, 3, 3); ctx.fillRect(-3, -24, 3, 3);
+    if (!tint) { ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.fillRect(2, -24, 1, 1); ctx.fillStyle = c.o; ctx.fillRect(-2, -28, 4, 2); } // 头顶的小天线
+    // 手臂 + 信号枪
+    ctx.fillStyle = c.d; ctx.fillRect(2, -17, 3, 7);
+    ctx.fillStyle = c.o; ctx.fillRect(4, -13, 6, 3); ctx.fillStyle = c.d; ctx.fillRect(4, -11, 2, 3);
+    ctx.restore();
+  },
+});
+Object.assign(Game, {
+  // 信号弹命中：普通敌人只会被打晕（踩头收尾）；机关、软体怪、镜像执行官等按普通子弹处理
+  flareStrike(e, src) {
+    const ghost = (typeof DeadlockGlitch !== 'undefined' && e instanceof DeadlockGlitch) || (typeof FpsPhantom !== 'undefined' && e instanceof FpsPhantom);
+    if (ghost) { if (e instanceof DeadlockGlitch ? !e.solid : e.state !== 'show') return 'none'; }
+    else if (e.onStrike || e instanceof Chandelier) return this.strike(e, 'shot', src);
+    if (e.guard && e.guard(src || this.player, 'shot')) return this.strike(e, 'shot', src);
+    e.stunT = this.player.C.stunT || 2.6;
+    Sound.sfx.stun(); this.shake(2);
+    this.particles.burst(e.x + e.w / 2, e.y + e.h / 2, 12, { color: ['#ff9a3c', '#ffe0a0', '#fff'], shape: 'spark', smin: 60, smax: 220, lmin: 0.15, lmax: 0.35, add: true });
+    if (!this.stunHinted) { this.stunHinted = true; this.toastHint('信号弹只会把敌人打晕——趁它晕着踩它的头'); }
+    return 'stun';
+  },
+  // 被打晕的敌人：头顶转圈的火花
+  drawStun(ctx, e) {
+    const cx = e.x + e.w / 2, cy = e.y - 6, k = Math.min(1, e.stunT * 2);
+    ctx.save(); ctx.globalAlpha = k; ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 3; i++) { const a = this.t * 6 + i * 2.09; ctx.fillStyle = i % 2 ? '#ffe0a0' : '#ff9a3c'; ctx.fillRect(cx + Math.cos(a) * 10 - 2, cy + Math.sin(a) * 3 - 2, 4, 4); }
     ctx.restore();
   },
 });
