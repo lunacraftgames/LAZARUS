@@ -19,12 +19,15 @@ Object.assign(Game, {
     Sound.sfx.confirm(); this.beginRun(id);
   },
   setCharSel(i) { if (i !== this.charSel) { this.charSel = i; Sound.sfx.select(); } },
+  // 选中哪个角色，就试听它的音乐风格（离开界面时 toTitle 会换回当前周目的角色）
+  previewCharMusic() { const id = CHAR_ORDER[this.charSel]; applyCharMusic(charDef(id).unlocked() ? id : this.charId); },
   updateChars() {
     const n = CHAR_ORDER.length;
     if (Input.hit('mu') || Input.hit('ml')) this.setCharSel((this.charSel + n - 1) % n);
     if (Input.hit('md') || Input.hit('mr')) this.setCharSel((this.charSel + 1) % n);
     if (Input.hit('confirm') && this.stateT > 0.2) this.charPick(this.charSel);
     if (Input.hit('pause') || Input.hit('back')) { Sound.sfx.select(); this.toTitle(); }
+    this.previewCharMusic();
     const id = CHAR_ORDER[this.charSel];
     if (charDef(id).unlocked() && !Inventory.p.charSeen[id]) { Inventory.p.charSeen[id] = true; Inventory.save(); }
   },

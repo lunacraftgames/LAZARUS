@@ -93,6 +93,7 @@ const Game = {
     // 当前周目的角色：继续游戏用存档里的角色；没有存档时（章节选择重玩）用最近一次开新游戏选的角色
     this.charId = (s && s.char) || Inventory.p.char || 'lazarus';
     if (!charDef(this.charId).unlocked()) this.charId = 'lazarus';
+    applyCharMusic(this.charId);
     const m = [];
     const cont = s && s.level > 0 && s.level < LEVELS.length;
     if (cont) m.push({ label: `继续游戏 · ${LEVELS[s.level].id} ${LEVELS[s.level].name}`, act: 'continue', lv: s.level });
@@ -109,7 +110,7 @@ const Game = {
   // 新的游戏：先选角色（只有这里能选，整个周目不能更换），再播开场剧情
   newGame() { this.openChars('new'); },
   beginRun(charId) {
-    this.charId = charId; Inventory.p.char = charId; Inventory.save();
+    this.charId = charId; Inventory.p.char = charId; Inventory.save(); applyCharMusic(charId);
     this.deaths = 0; this.chips = new Set(); this.runTime = 0; Save.clear();
     this.playStory(1);
   },
@@ -162,7 +163,7 @@ const Game = {
     this.tileCanvas = renderTiles(this.world, occ, def.theme.tiles);
     this.permDead = new Set();
     this.checkpoint = { x: spawn.cx * TILE + 6, y: (spawn.cy + 1) * TILE - 28 };
-    Inventory.charWeapon = charDef(this.charId).weapon || null;
+    Inventory.charWeapon = charDef(this.charId).weapon || null; applyCharMusic(this.charId);
     this.player = new Player(this.checkpoint.x, this.checkpoint.y, this.charId);
     this.player.spawnT = 0.45;
     this.radioTriggers = def.radio.map((r) => Object.assign({ fired: false }, r));

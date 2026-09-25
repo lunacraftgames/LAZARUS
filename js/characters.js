@@ -24,6 +24,7 @@ const CHARACTERS = {
     color: '#fc4', w: 20, h: 18,
     // 跑得快一点、跳得矮一点（仍然能跳上 3 格高的台子）、没有二段跳
     pl: { RUN: 270, ACC_G: 3000, JUMP: 690, H: 18 },
+    music: 'tin', // 背景音乐的演奏风格（见 audio.js 的 STYLES）
     weapon: 'brush', draw: 'drawScrubber', noDoubleJump: true, noCrouch: true, crawl: true, rollStrike: true,
     climb: 190, // 贴墙 / 天花板爬行速度（像素/秒）
     bio: '第一章那只被你踩碎的除尘蜘蛛。它在拉撒路的无线电信号里重新找回了自己的清扫程序，把碎掉的腿一根根装了回去——然后决定跟着你走。',
@@ -40,6 +41,8 @@ const CHARACTERS = {
 };
 const CHAR_ORDER = ['lazarus', 'scrubber'];
 function charDef(id) { return CHARACTERS[id] || CHARACTERS.lazarus; }
+// 背景音乐跟着角色换演奏风格
+function applyCharMusic(id) { Sound.setStyle(charDef(id).music || null); }
 
 // 小扫的专属武器：旋转刷
 WPN.brush = { melee: true, active: 0.08, cd: 0.12, swing: 0.1, reach: 34, arc: 22 };
