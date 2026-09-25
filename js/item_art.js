@@ -327,7 +327,29 @@ const ItemArt = (() => {
     ctx.fillStyle = rg(ctx, -6, -18, 0, 20, [[0, '#fff2c0'], [1, '#6a5018']]); ctx.beginPath(); ctx.arc(0, -12, 16, 0, 7); ctx.fill();
     glow(ctx, 0, -12, 40, '255,210,90', 0.25);
   }
-  const ART = { brush: { fn: brush, rot: 0, s: 1 }, sabre: { fn: sabre, rot: -0.12, s: 0.95 }, relicBlade: { fn: relic, rot: -0.1, s: 0.9 }, dashStrike: { fn: dash, rot: 0, s: 1 }, doubleJump: { fn: thruster, rot: 0, s: 0.85 }, flintlock: { fn: flintlock, rot: -0.06, s: 0.95 }, sporeGun: { fn: spore, rot: -0.05, s: 1.05 } };
+  // ---------------- 阿特拉斯的液压拳 ----------------
+  function fist(ctx, t) {
+    const pump = Math.max(0, Math.sin(t * 3)) ** 4 * 14;
+    // 液压杆
+    ctx.fillStyle = lg(ctx, 0, -14, 0, 14, [[0, '#c9c7c0'], [0.5, '#7a7872'], [1, '#3e3c38']]);
+    ctx.fillRect(-110, -10, 70 + pump, 20);
+    ctx.fillStyle = '#5b5a55'; ctx.fillRect(-120, -22, 26, 44);
+    rivet(ctx, -107, -14, 3); rivet(ctx, -107, 14, 3);
+    // 拳套：工程黄 + 黑黄警示条
+    ctx.save(); ctx.translate(pump, 0);
+    const body = new Path2D(); body.rect(-44, -42, 96, 84);
+    ctx.fillStyle = lg(ctx, 0, -42, 0, 42, [[0, '#f7c948'], [0.6, '#e0a525'], [1, '#8a6414']]); ctx.fill(body);
+    ctx.save(); ctx.clip(body); ctx.fillStyle = '#1e1c19';
+    for (let i = -60; i < 60; i += 20) { ctx.beginPath(); ctx.moveTo(i, 42); ctx.lineTo(i + 10, 42); ctx.lineTo(i + 30, 22); ctx.lineTo(i + 20, 22); ctx.fill(); }
+    sheen(ctx, t, -44, -42, 96, 84); ctx.restore();
+    ctx.strokeStyle = '#3a2e14'; ctx.lineWidth = 3; ctx.stroke(body);
+    // 指节
+    for (let k = 0; k < 4; k++) { ctx.fillStyle = '#5b5a55'; ctx.fillRect(52, -38 + k * 20, 16, 16); ctx.fillStyle = '#8a8880'; ctx.fillRect(54, -36 + k * 20, 12, 4); }
+    rivet(ctx, -30, -28, 4); rivet(ctx, 36, -28, 4); rivet(ctx, -30, 8, 4); rivet(ctx, 36, 8, 4);
+    ctx.restore();
+    glow(ctx, 60 + pump, 0, 50, '255,190,80', 0.2);
+  }
+  const ART = { fist: { fn: fist, rot: 0, s: 0.95 }, brush: { fn: brush, rot: 0, s: 1 }, sabre: { fn: sabre, rot: -0.12, s: 0.95 }, relicBlade: { fn: relic, rot: -0.1, s: 0.9 }, dashStrike: { fn: dash, rot: 0, s: 1 }, doubleJump: { fn: thruster, rot: 0, s: 0.85 }, flintlock: { fn: flintlock, rot: -0.06, s: 0.95 }, sporeGun: { fn: spore, rot: -0.05, s: 1.05 } };
 
   function draw(ctx, key, cx, cy, t, own) {
     const A = ART[key]; if (!A) return false;

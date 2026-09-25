@@ -5,6 +5,7 @@
 // 第四章：同时考虑正常站立和倒立在天花板上两种状态；有重力周期的关卡任何位置都能翻转，只有重力开关的关卡只能在开关处翻转。
 //        一键模式区域按普通跳跃计算（障碍都设计成跳得过去）。
 // 小扫（可选角色）：没有二段跳，但能沿任何实心瓦片的表面爬行（墙、天花板、翻过外角）；另外单独检查一遍。
+// 阿特拉斯（可选角色）：没有冲刺和二段跳，靠跳跃 + 喷气悬停（实测：按住跳跃最高约 6.6 格，平飞约 12 格）。
 //   第四章：能翻转重力的地方（按时间交替的关卡处处可翻，开关关卡只在开关旁）额外允许「倒过来」的跳跃和落下。
 // 只用于发现“明显无法到达出口”的设计错误；不模拟敌人、激光、时序，结果仅供参考。
 const fs = require('fs'), vm = require('vm'), path = require('path');
@@ -32,7 +33,7 @@ for (const L of ctx.LEVELS) {
   const ch = parseInt(L.id, 10), dj = ch >= 2;
   const wet = (x, y) => !!(B.water && B.water[y] && B.water[y][x]);
   const crawlTag = () => { const ok = reachCrawl(L, g, t, solid, wet, support); if (!ok) bad++; return ` · 小扫${ok ? '可达' : '【不可达！】'}`; };
-  if (ch >= 4) { if (L.boss) { console.log(`${L.id} ${L.name}: Boss 关，跳过`); continue; } const ok = reach4(L, g, t, solid); if (!ok) bad++; console.log(`${L.id} ${L.name}: 含重力翻转${ok ? '可达' : '【不可达！】'}${crawlTag()}`); continue; }
+  if (ch >= 4) { if (L.boss) { console.log(`${L.id} ${L.name}: Boss 关，跳过`); continue; } const ok = reach4(L, g, t, solid); if (!ok) bad++; console.log(`${L.id} ${L.name}: 含重力翻转${ok ? '可达' : '【不可达！】'}${crawlTag()} · 阿特拉斯按重力翻转规则${ok ? '可达' : '【不可达！】'}`); continue; }
   const stand = (x, y) => !solid(x, y) && !solid(x, y - 1) && t(x, y) !== '^' && (BLOCK.includes(t(x, y + 1)) || support.has(x + ',' + (y + 1)) || wet(x, y) || t(x, y + 1) === 'u');
   let S = null, E = null;
   for (let y = 0; y < L.h; y++) for (let x = 0; x < L.w; x++) { if (g[y][x] === 'S') S = [x, y]; if (g[y][x] === 'E') E = [x, y]; }
@@ -67,9 +68,33 @@ for (const L of ctx.LEVELS) {
     }
     return seen.has(E + '');
   };
-  const a = reach(false), b = reach(true);
+  // 阿特拉斯：跳跃 + 喷气悬停（上升越多，能飘的水平距离越短）
+  const reachJet = () => {
+    const JET = { 0: 11, 1: 10, 2: 9, 3: 8, 4: 7, 5: 5, 6: 3 };
+    const seen = new Set([S + '']), q = [S];
+    while (q.length) {
+      const [x, y] = q.shift();
+      const spring = t(x, y) === 'T' || t(x, y + 1) === 'u', inW = wet(x, y);
+      for (const [x2, y2] of nodes) {
+        const k = x2 + ',' + y2; if (seen.has(k)) continue;
+        const dy = y - y2, dx = Math.abs(x2 - x);
+        let ok = false;
+        if (spring && dy <= 11 && dx <= (dy <= 8 ? 9 : 6)) ok = true; // 弹床 / 软体怪弹起后还能接喷气滑翔（实测：2-7 升 6 格的同时能飘 8 格以上）
+        else if (inW && wet(x2, y2) && Math.abs(dy) + dx <= 2) ok = true;
+        else if (inW && dy <= 4 && dy >= 0 && dx <= 5) ok = true;
+        else if (dy > 6) ok = false;
+        else if (dy >= 0) ok = dx <= JET[dy];
+        else ok = dx <= 11 + Math.min(4, -dy);
+        if (ok && !(spring && dy > 3) && !(dy > 3) && !(inW && wet(x2, y2)) && !clear(x, y, x2, y2)) ok = false;
+        if (ok) { seen.add(k); q.push([x2, y2]); }
+      }
+    }
+    return seen.has(E + '');
+  };
+  const a = reach(false), b = reach(true), j = reachJet();
   if (!b) bad++;
-  console.log(`${L.id} ${L.name}: 不冲刺${a ? '可达' : '不可达'} · 含冲刺${b ? '可达' : '【不可达！】'}${crawlTag()}`);
+  if (!j) bad++;
+  console.log(`${L.id} ${L.name}: 不冲刺${a ? '可达' : '不可达'} · 含冲刺${b ? '可达' : '【不可达！】'}${crawlTag()} · 阿特拉斯${j ? '可达' : '【不可达！】'}`);
 }
 // 第四章：节点 = (x, y, 朝向)，朝向 0 = 站在地面上，1 = 倒立站在天花板下
 function reach4(L, g, t, solid) {

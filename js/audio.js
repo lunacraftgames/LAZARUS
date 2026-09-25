@@ -470,6 +470,35 @@ const Sound = (() => {
         if (Math.floor(s / 64) % 2 === 1 && motif[k]) tone({ type: 'triangle', f: N(motif[k]), at, dur: 0.16, vol: 0.035, bus, send: 0.4 });
       },
     },
+    // 阿特拉斯：沉重的工业风——放慢一点，旋律换成滤波锯齿波（像铜管、像机器），低音和底鼓更重；
+    // 加一层铁砧敲击（二、四拍）、液压泄气的嘶声和齿轮的闷响，再加一段低音铜管动机
+    steel: {
+      tempo: 0.9,
+      tone(o) {
+        o = Object.assign({}, o);
+        if (o.f2 && o.f < 200) { o.vol = (o.vol || 0.2) * 1.35; o.dur = Math.max(o.dur, 0.26); o.f2 *= 0.8; return o; } // 底鼓：更重、更长
+        if (o.f < 200) { o.vol = (o.vol || 0.2) * 1.35; return o; }                                                      // 贝斯：更厚
+        if (o.type === 'sawtooth') { o.ff = (o.ff || 1000) * 0.7; o.vol = (o.vol || 0.2) * 1.15; return o; }            // 铺底：更闷
+        if (o.f > 300 && (o.type === 'square' || o.type === 'sine' || o.type === 'triangle')) {
+          o.type = 'sawtooth'; o.filter = 'lowpass'; o.ff = 1500; o.q = 2; o.vol = (o.vol || 0.2) * 0.9; // 旋律：像铜管 / 机器
+          if (o.f > 900) o.f /= 2;
+          o.dur = Math.min(o.dur * 1.2, 1.6);
+        }
+        return o;
+      },
+      extra(s, at, bus, spb, name) {
+        if (QUIET[name]) return;
+        const st = s % 16;
+        if (st === 4 || st === 12) { // 铁砧：短促的金属敲击 + 泛音
+          tone({ type: 'square', f: 1180, at, dur: 0.05, vol: 0.022, filter: 'bandpass', ff: 1400, q: 6, bus });
+          tone({ type: 'triangle', f: 2360, at, dur: 0.18, vol: 0.01, bus, send: 0.3 });
+        }
+        if (s % 32 === 30) noise({ filter: 'highpass', f: 4500, dur: 0.4, vol: 0.02, attack: 0.12, at, bus }); // 液压泄气
+        if (st === 6 || st === 14) tone({ type: 'sine', f: 62, f2: 48, at, dur: 0.12, vol: 0.09, bus });     // 齿轮闷响
+        const motif = { 0: 45, 4: 48, 8: 52, 10: 50, 12: 45 }, k = s % 64; // 低音铜管动机：每 4 小节出现一次
+        if (Math.floor(s / 64) % 2 === 1 && motif[k] != null) tone({ type: 'sawtooth', f: N(motif[k]), at, dur: spb * 3.5, vol: 0.03, filter: 'lowpass', ff: 700, bus, send: 0.2 });
+      },
+    },
   };
   let style = null, styling = null;
   // 切换角色音乐风格（null = 原版）；正在播放的曲子会立刻换成新的演奏方式

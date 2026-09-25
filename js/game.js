@@ -519,6 +519,7 @@ const Game = {
     if (this.exhibit) this.exhibit.update(dt, this);
     if (this.boss) { this.boss.update(dt, this); this.boss.touchPlayer(this); }
     if (this.pickup) this.pickup.update(dt, this);
+    if (this.state === 'play' && p.C && p.C.shield) this.atlasShield(p); // 阿特拉斯的臂盾
     for (const pr of this.projectiles) pr.update(dt, this);
     this.projectiles = this.projectiles.filter((pr) => !pr.dead);
     this.updatePShots(dt);
@@ -780,7 +781,7 @@ const Game = {
     // 冲刺状态
     const dx = 232;
     ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(dx, 12, 118, 44);
-    ctx.font = '10px ' + MONO; ctx.fillStyle = 'rgba(200,200,200,0.7)'; ctx.fillText('DASH', dx + 10, 28);
+    ctx.font = '10px ' + MONO; ctx.fillStyle = 'rgba(200,200,200,0.7)'; ctx.fillText(p.C.jet ? 'SLAM' : 'DASH', dx + 10, 28); // 阿特拉斯的冲刺键是地面猛击
     let col = '#6ff', label = 'READY';
     if (p.lockT > 0) { col = (this.t * 10) % 2 < 1 ? '#f35' : '#a13'; label = `LOCK ${p.lockT.toFixed(1)}s`; }
     else if (p.dashLock > 0) { col = (this.t * 10) % 2 < 1 ? '#f33' : '#a11'; label = `ALARM ${p.dashLock.toFixed(1)}s`; }
@@ -806,7 +807,13 @@ const Game = {
       if (many) this.addHot(wx, 12, ww, 44, () => { if (this.state === 'play') this.swapWeapon(); });
     }
     // 二段跳 / 粘液
-    if (Inventory.ability('doubleJump') && !p.C.noDoubleJump) {
+    if (p.C.jet) { // 阿特拉斯：喷气燃料
+      const jx = dx + 250;
+      ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(jx, 12, 64, 44);
+      ctx.font = '10px ' + MONO; ctx.fillStyle = 'rgba(200,200,200,0.7)'; ctx.fillText(p.slimeT > 0 ? 'SLIME' : 'FUEL', jx + 10, 28);
+      ctx.fillStyle = 'rgba(255,255,255,0.1)'; ctx.fillRect(jx + 10, 34, 44, 6);
+      ctx.fillStyle = p.slimeT > 0 ? '#7c4' : p.dashLock > 0 ? '#f33' : p.jetOn ? '#ffd070' : '#f5b52e'; ctx.fillRect(jx + 10, 34, 44 * (p.slimeT > 0 ? p.slimeT / PL.SLIME_T : p.fuel / p.C.fuel), 6);
+    } else if (Inventory.ability('doubleJump') && !p.C.noDoubleJump) {
       const jx = dx + (Inventory.canAttack() ? 250 : 124);
       ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(jx, 12, 64, 44);
       ctx.font = '10px ' + MONO; ctx.fillStyle = 'rgba(200,200,200,0.7)'; ctx.fillText(p.slimeT > 0 ? '' : p.inWater ? 'SWIM' : 'JUMP+', jx + 10, 28);

@@ -207,11 +207,11 @@ class MatrixCtl {
   }
   // 冲刺时调用：在冲刺起点留下残影
   spawnEcho(p, g) {
-    this.echoes.push({ x: p.x, y: p.y + p.h - 28, f: p.facing, og: p.onGround, t: 0, life: PL3.ECHO_LIFE, C: p.C, h: p.h }); // 残影总是站立高度（判定用）；C / h = 画成哪个角色
+    this.echoes.push({ x: p.x, y: p.y + p.h - 28, f: p.facing, og: p.onGround, t: 0, life: (p.C && p.C.echoLife) || PL3.ECHO_LIFE, C: p.C, h: p.h }); // 残影总是站立高度（判定用）；C / h = 画成哪个角色
     if (this.echoes.length > PL3.ECHO_MAX) this.echoes.shift();
     Sound.sfx.echo();
     g.particles.burst(p.cx, p.cy, 10, { color: ['#2f9', '#bfe', '#fff'], smin: 30, smax: 120, lmin: 0.2, lmax: 0.45, add: true, szmin: 1.5, szmax: 3 });
-    if (!g.echoHinted) { g.echoHinted = true; g.toastHint('冲刺留下了 3 秒的代码残影——它能替你压住代码门的机关'); }
+    if (!g.echoHinted) { g.echoHinted = true; g.toastHint(charText('冲刺留下了 3 秒的代码残影——它能替你压住代码门的机关')); }
   }
   addField(x, y, src, g) {
     this.fields.push({ x, y, r: PL3.FIELD_R, t: 0, life: PL3.FIELD_T, src });
@@ -666,7 +666,7 @@ class DeadlockGlitch {
     p.lockT = PL3.LOCK; p.lockImmune = PL3.LOCK + 0.8; p.vx = 0; p.dashT = 0; p.jumping = false; if (p.vy < 0) p.vy *= 0.3;
     Sound.sfx.lock(); g.shake(5); g.freeze(0.05); Input.rumble(0.4, 0.6, 200);
     g.particles.burst(p.cx, p.cy, 16, { color: ['#f35', '#2f9', '#fff'], shape: 'spark', smin: 60, smax: 220, lmin: 0.2, lmax: 0.4, add: true });
-    if (!g.lockHinted) { g.lockHinted = true; g.toastHint('死锁！1.5 秒内无法移动、跳跃和冲刺。可以踩它、或者用武器把它打散'); }
+    if (!g.lockHinted) { g.lockHinted = true; g.toastHint(charText('死锁！1.5 秒内无法移动、跳跃和冲刺。可以踩它、或者用武器把它打散')); }
     this.state = 'out'; this.t = 0.15;
   }
   onStrike(g) { if (!this.solid) return 'none'; Sound.sfx.slashHit(); g.killEnemy(this); return 'kill'; }
@@ -996,7 +996,7 @@ class MirrorLazarus {
     }
     const body = Object.assign(ghostBody(!this.air), { vx: this.vx, run: this.run });
     // 镜像的是玩家当前的角色：小扫的周目里画成放大的小扫（放大到和判定框差不多高）
-    const pc = g.player && g.player.C, alt = pc && pc.draw, S = alt ? 3 : 2, by = alt ? -pc.h : -28;
+    const pc = g.player && g.player.C, alt = pc && pc.draw, S = alt ? Math.max(2, Math.round(56 / pc.h)) : 2, by = alt ? -pc.h : -28; // 放大到和判定框（约 56 像素高）差不多
     if (alt) { body.C = pc; body.h = pc.h; }
     if (this.state === 'record') { // 从录像的第一帧开始逐行成形
       const k = clamp(this.clock / this.delay, 0, 1);

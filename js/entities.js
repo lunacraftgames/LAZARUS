@@ -420,7 +420,7 @@ class Knight {
   guard(p, kind) {
     if (this.state === 'stun') return false;
     if (kind === 'heavy' || kind === 'spore') return false; // 重劈 / 冲击波 / 孢子腐蚀：无视盾牌
-    if (kind === 'blade' && Inventory.weapon() === 'relicBlade') return false; // 巨像残刃可破甲
+    if (kind === 'blade' && (Inventory.weapon() === 'relicBlade' || Inventory.weapon() === 'fist')) return false; // 巨像残刃、阿特拉斯的液压拳可破甲
     const front = Math.sign(p.cx - (this.x + this.w / 2)) === this.dir;
     const above = p.y + p.h <= this.y + 8;
     return front || above;
