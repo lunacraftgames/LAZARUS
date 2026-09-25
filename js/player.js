@@ -11,7 +11,8 @@ const PL = {
   DJUMP: 640,            // 二段跳（推进囊）
   SLIME_T: 3,            // 粘液：持续 3 秒，跳跃高度减半且不能二段跳
   WATER: { GRAV: 780, MAXFALL: 230, RUN: 190, ACC: 650, DEC: 150, SWIM: 420, SWIM_CD: 0.22, EXIT: 660 }, // 高密度培养液：低重力、惯性大
-  H: 28, CROUCH_H: 14, CROUCH_RUN: 0.4, // 站立 / 下蹲高度，下蹲移动速度倍率
+  H: 28, CROUCH_H: 19, CROUCH_RUN: 0.4, // 站立 / 下蹲高度（下蹲降低 1/3 个身位），下蹲移动速度倍率
+  CROUCH_ATK: 8,                         // 下蹲时攻击位置降低一半：站立时攻击中心离地约 16px → 下蹲时约 8px
   // 第三章
   LAG: 0.5,              // 掉帧幽灵：输入延迟 0.5 秒
 };
@@ -41,7 +42,7 @@ class Player {
       lockT: 0, lockImmune: 0, lagT: 0, lagBuf: [], lagOut: null, ctl: {},
       gd: 1, prevTop: y, cubeRot: 0, frozen: false, // 第四章：重力方向（1 正常 / -1 反转）、一键模式、终局冻结
       lookUp: false, lookT: 0, atkUp: false,         // 向上瞄准
-      h: PL.H, crouch: false,                        // 下蹲：碰撞箱高度减半
+      h: PL.H, crouch: false,                        // 下蹲：碰撞箱降低 1/3
     });
   }
   hurt() { const t = this.crouch ? 3 : 6; return { x: this.x + 4, y: this.y + t, w: this.w - 8, h: this.h - t - 2 }; }
@@ -60,11 +61,13 @@ class Player {
     const W = this.atkHeavy ? HEAVY : WPN[Inventory.weapon()];
     if (!W || !W.reach) return null;
     const R = W.reach;
+    // 以站立时的头顶为基准；下蹲时横向攻击的高度降低一半
+    const top = this.y + this.h - PL.H, low = this.crouch ? PL.CROUCH_ATK : 0;
     let b;
-    if (this.atkHeavy) b = { x: this.facing > 0 ? this.x + this.w - 10 : this.x + 10 - R, y: this.y - 26, w: R, h: this.h + 34 };
+    if (this.atkHeavy) b = { x: this.facing > 0 ? this.x + this.w - 10 : this.x + 10 - R, y: top - 26 + low, w: R, h: PL.H + 34 };
     else if (this.atkDown) b = { x: this.x - 12, y: this.y + this.h - 6, w: this.w + 24, h: R - 8 };
-    else if (this.atkUp) b = { x: this.x - 12, y: this.y - R + 14, w: this.w + 24, h: R - 8 }; // 按住「向上瞄准」：朝上劈
-    else b = { x: this.facing > 0 ? this.x + this.w - 6 : this.x + 6 - R, y: this.y - 10, w: R, h: this.h + 16 };
+    else if (this.atkUp) b = { x: this.x - 12, y: top - R + 14, w: this.w + 24, h: R - 8 }; // 按住「向上瞄准」：朝上劈
+    else b = { x: this.facing > 0 ? this.x + this.w - 6 : this.x + 6 - R, y: top - 10 + low, w: R, h: PL.H + 16 };
     if (this.gd < 0) b.y = 2 * this.cy - (b.y + b.h); // 重力反转：上下镜像
     return b;
   }
@@ -323,8 +326,10 @@ class Player {
 
   drawSlash(ctx, g) {
     const sk = Inventory.equipped('blade'), k = 1 - this.atkSwing / (this.atkSwingMax || 0.12);
-    const cx = this.cx, cy = this.cy;
-    ctx.save(); ctx.translate(cx, cy);
+    const feet = this.y + this.h, cx = this.cx, cy = feet - PL.H / 2 + (this.crouch && !this.atkDown && !this.atkUp ? PL.CROUCH_ATK : 0);
+    ctx.save();
+    if (this.crouch) { ctx.beginPath(); ctx.rect(cx - 200, feet - 300, 400, 300); ctx.clip(); } // 下蹲：刀光不画到地面以下
+    ctx.translate(cx, cy);
     if (this.atkDown) ctx.rotate(Math.PI / 2);
     else { ctx.scale(this.facing, 1); if (this.atkUp && !this.atkHeavy) ctx.rotate(-Math.PI / 2); }
     const a0 = -1.3 + k * 0.4, a1 = a0 + 2.4 * Math.min(1, k * 2.2);
@@ -362,7 +367,7 @@ class Player {
     const c = tint ? { a: tint, b: tint, d: tint, e: tint, k: tint, pack: tint, stripe: tint, visor: tint } : paint.pal;
     const slimed = !tint && this.slimeT > 0;
     if (paint && paint.glitch && Math.random() < 0.04) ctx.translate(rand(-3, 3), 0);
-    const cr = this.crouch ? 11 : 0; // 下蹲：上半身整体下沉
+    const cr = this.crouch ? 10 : 0; // 下蹲：上半身整体下沉约 1/3 个身位
     if (cr) ctx.translate(0, cr);
     // 背上的残刃（已解锁时）
     const curW = !tint && this.hasBlade !== false ? Inventory.weapon() : null;
@@ -384,11 +389,6 @@ class Player {
       ctx.fillRect(-14.5, -38, 3, 3);
     }
     // 腿（下蹲时画成弯曲的短腿，坐标要减去上半身的下沉量）
-    if (cr) {
-      ctx.fillStyle = c.a; ctx.fillRect(-8, -7 - cr, 7, 5); ctx.fillRect(1, -7 - cr, 7, 5);
-      ctx.fillStyle = c.k; ctx.fillRect(-3, -7 - cr, 3, 3); ctx.fillRect(6, -7 - cr, 3, 3);
-      ctx.fillStyle = c.d; ctx.fillRect(-9, -2 - cr, 8, 2); ctx.fillRect(0, -2 - cr, 9, 2);
-    }
     let l1x = -6, l2x = 1, l1y = 0, l2y = 0;
     if (moving) { l1x += Math.sin(ph) * 4; l2x -= Math.sin(ph) * 4; l1y = -Math.max(0, Math.cos(ph)) * 3; l2y = -Math.max(0, -Math.cos(ph)) * 3; }
     else if (air) { l1x = -7; l2x = 3; l1y = -3; l2y = -1; }
@@ -408,6 +408,19 @@ class Player {
       ctx.fillStyle = '#8a5234'; ctx.fillRect(4, -20, 3, 2); ctx.fillRect(-6, -15, 2, 2);
       ctx.fillStyle = '#3a382a'; ctx.fillRect(-8, -21, 1, 1); ctx.fillRect(7, -21, 1, 1);
     }
+    // 下蹲的腿：单膝跪地——前腿大腿伸出身前、膝盖立起、小腿竖直着地；后腿膝盖跪地、小腿平放在身后
+    if (cr) {
+      const g0 = -cr - bob, ol = tint || '#1c1a14'; // g0 = 地面在当前坐标系里的位置；ol = 轮廓色
+      const leg = (x, y, w, h, col) => { ctx.fillStyle = ol; ctx.fillRect(x - 1, y - 1, w + 2, h + 2); ctx.fillStyle = col; ctx.fillRect(x, y, w, h); };
+      leg(-9, g0 - 7, 5, 5, c.a);    // 后腿大腿（向下）
+      leg(-18, g0 - 3, 10, 3, c.a);  // 后腿小腿（平放在地上）
+      leg(-9, g0 - 3, 5, 3, c.k);    // 跪地的膝盖
+      leg(-21, g0 - 2, 3, 2, c.d);   // 后脚
+      leg(3, g0 - 9, 11, 4, c.a);    // 前腿大腿（伸到身前）
+      leg(12, g0 - 7, 4, 7, c.a);    // 前腿小腿（竖直）
+      leg(12, g0 - 11, 5, 4, c.k);   // 前膝护甲
+      leg(11, g0 - 2, 8, 2, c.d);    // 前脚
+    }
     // 核心
     let core = c.visor;
     if (this.dashLock > 0) core = (t * 10) % 2 < 1 ? '#f33' : '#700';
@@ -423,10 +436,11 @@ class Player {
     const look = !tint && this.lookUp; // 向上瞄准：手臂举起、枪口朝上、头往上抬
     const sw = look ? 0 : moving ? Math.sin(ph) * 3 : air ? -2 : 0;
     ctx.fillStyle = c.b; ctx.fillRect(-3, -24, 9, 5);
-    if (!look) { ctx.fillStyle = c.a; ctx.fillRect(1 + sw, -19, 4, 8); ctx.fillStyle = c.d; ctx.fillRect(1 + sw, -12, 4, 3); }
+    const ay = cr ? -2 : 0; // 下蹲：手臂和枪稍微抬起，和子弹射出的高度对齐
+    if (!look) { ctx.fillStyle = c.a; ctx.fillRect(1 + sw, -19 + ay, 4, 8); ctx.fillStyle = c.d; ctx.fillRect(1 + sw, -12 + ay, 4, 3); }
     // 手里的枪（向上瞄准时画在头的前面，见下方）
     const drawGun = (kick) => {
-      if (look) { ctx.translate(9, -34 + kick); ctx.rotate(-Math.PI / 2); } else { ctx.translate(3 + sw - kick, -11); ctx.rotate(-kick * 0.08); }
+      if (look) { ctx.translate(9, -34 + kick); ctx.rotate(-Math.PI / 2); } else { ctx.translate(3 + sw - kick, -11 + ay); ctx.rotate(-kick * 0.08); }
       if (curW === 'flintlock') {
       const kick = Math.max(0, (this.atkCd || 0) - 0.8) * 20;
         ctx.fillStyle = '#5a3a20'; ctx.fillRect(-2, -1, 5, 5);            // 握把
