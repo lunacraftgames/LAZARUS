@@ -55,10 +55,8 @@ Object.assign(Game, {
     ctx.fillStyle = '#f2ead6'; ctx.font = 'bold 26px ' + FONT; ctx.fillText('仓库', 24, 48);
     ctx.fillStyle = 'rgba(200,190,160,0.6)'; ctx.font = '12px ' + MONO; if (!I18N.en) ctx.fillText('INVENTORY', 86, 48); // 英文模式下标题本身就是英文，不再重复
     ctx.textAlign = 'right'; ctx.font = '11px ' + FONT;
-    ctx.fillStyle = Inventory.backend.name === 'steam' ? '#8fe' : 'rgba(255,200,120,0.75)';
-    ctx.fillText(Inventory.backend.name === 'steam' ? '已连接 Steam 库存' : '本地模拟库存 · 正式版将与 Steam 库存同步', VW - 24, 30);
-    const tradable = Inventory.p.items.filter((i) => DEF_BY_ID[i.def] && DEF_BY_ID[i.def].tradable).length;
-    ctx.fillStyle = 'rgba(200,200,200,0.6)'; ctx.fillText(tr('可交易物品 %{n} 件 · 累计游玩 %{m} 分钟', { n: tradable, m: Math.floor(Inventory.p.playtime / 60) }), VW - 24, 48);
+    const drops = Inventory.p.items.filter((i) => DEF_BY_ID[i.def] && DEF_BY_ID[i.def].drop).length;
+    ctx.fillStyle = 'rgba(200,200,200,0.6)'; ctx.fillText(tr('掉落外观 %{n} 件 · 累计游玩 %{m} 分钟', { n: drops, m: Math.floor(Inventory.p.playtime / 60) }), VW - 24, 48);
     ctx.textAlign = 'left';
     // 标签页
     SLOTS.forEach((sl, i) => {
@@ -83,10 +81,10 @@ Object.assign(Game, {
       ctx.font = 'bold 14px ' + FONT; ctx.fillStyle = own ? '#f0ece0' : 'rgba(160,160,160,0.55)';
       ctx.fillText(own ? d.name : '？？？ · 未获得', lx + 16, y + 17);
       ctx.font = '10px ' + FONT; ctx.fillStyle = own ? r.color : 'rgba(150,150,150,0.5)';
-      ctx.fillText(r.name + (d.tradable ? ' · 可交易' : ' · 账号绑定'), lx + 16, y + 31);
+      ctx.fillText(r.name + (d.drop ? ' · 随机掉落' : ' · 固定获得'), lx + 16, y + 31);
       ctx.textAlign = 'right';
       const cnt = Inventory.count(d.id);
-      if (own && d.tradable) { ctx.fillStyle = 'rgba(220,220,210,0.7)'; ctx.font = '12px ' + MONO; ctx.fillText('×' + cnt, lx + lw - 12, y + 24); }
+      if (own && d.drop) { ctx.fillStyle = 'rgba(220,220,210,0.7)'; ctx.font = '12px ' + MONO; ctx.fillText('×' + cnt, lx + lw - 12, y + 24); }
       if (d.slot !== 'ability' && d.slot !== 'exhibit' && Inventory.equipped(d.slot).id === d.id && !(Inventory.preview)) { ctx.fillStyle = '#7ff'; ctx.font = 'bold 11px ' + FONT; ctx.fillText('已装备', lx + lw - 52, y + 24); }
       else if (d.slot !== 'ability' && d.slot !== 'exhibit' && Inventory.p.equipped[d.slot] === d.id) { ctx.fillStyle = '#7ff'; ctx.font = 'bold 11px ' + FONT; ctx.fillText('已装备', lx + lw - 52, y + 24); }
       if (d.weapon && own && Inventory.weapon() === d.key) { ctx.fillStyle = '#7ff'; ctx.font = 'bold 11px ' + FONT; ctx.fillText('当前武器', lx + lw - 52, y + 24); }
@@ -144,16 +142,16 @@ Object.assign(Game, {
     ctx.restore(); ctx.globalAlpha = 1;
     ctx.fillStyle = own ? r.color : '#888'; ctx.font = 'bold 20px ' + FONT; ctx.fillText(own ? d.name : '？？？', dx, 292);
     ctx.font = '11px ' + FONT; ctx.fillStyle = 'rgba(220,220,210,0.7)';
-    ctx.fillText(`${tr(r.name)} · ${tr(SLOTS[this.invTab].name)}` + (own && d.tradable ? tr(' · 持有 ×%{n}', { n: Inventory.count(d.id) }) : ''), dx, 312);
+    ctx.fillText(`${tr(r.name)} · ${tr(SLOTS[this.invTab].name)}` + (own && d.drop ? tr(' · 持有 ×%{n}', { n: Inventory.count(d.id) }) : ''), dx, 312);
     ctx.font = '13px ' + FONT; ctx.fillStyle = '#e6dcc0';
     const where = d.desc && d.desc.match(/【(.+?)】/);
-    const desc = own ? d.desc : (d.tradable ? '尚未获得。可通过 Boss 掉落、零重构通关、游玩时长掉落获得，或在 Steam 市场与其他玩家交易。' : tr('尚未获得。获得地点：%{w}。', { w: tr(where ? where[1] : '后续关卡') }));
+    const desc = own ? d.desc : (d.drop ? '尚未获得。可通过 Boss 掉落、零重构通关、游玩时长掉落获得。' : tr('尚未获得。获得地点：%{w}。', { w: tr(where ? where[1] : '后续关卡') }));
     wrapText(ctx, desc, dw).slice(0, 5).forEach((l, i) => ctx.fillText(l, dx, 338 + i * 20));
-    // 交易属性徽章
+    // 获得方式徽章
     const by = 450;
-    ctx.fillStyle = d.tradable ? 'rgba(255,200,90,0.12)' : 'rgba(120,255,230,0.1)'; ctx.fillRect(dx, by, dw, 30);
-    ctx.fillStyle = d.tradable ? '#fc6' : '#7ff'; ctx.font = 'bold 12px ' + FONT;
-    ctx.fillText(d.tradable ? '⇄ 可交易 · 可上架 Steam 社区市场' : '🔒 账号绑定 · 不可交易 · 不可上架市场', dx + 10, by + 20);
+    ctx.fillStyle = d.drop ? 'rgba(255,200,90,0.12)' : 'rgba(120,255,230,0.1)'; ctx.fillRect(dx, by, dw, 30);
+    ctx.fillStyle = d.drop ? '#fc6' : '#7ff'; ctx.font = 'bold 12px ' + FONT;
+    ctx.fillText(d.drop ? '🎲 随机掉落 · Boss / 零重构通关 / 游玩时长' : '★ 固定获得 · 剧情 / 收藏奖励', dx + 10, by + 20);
     if (own && d.weapon) {
       if (Inventory.weapon() === d.key) { ctx.fillStyle = '#7ff'; ctx.font = '12px ' + FONT; ctx.fillText(tr('✔ 当前武器（游戏中按 %{k} 切换）', { k: Input.glyph('swap') }), dx, by + 50); }
       else {
