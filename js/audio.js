@@ -45,6 +45,7 @@ const Sound = (() => {
   }
   function tone(o) {
     if (!ctx) return null;
+    if (styling) o = styling.tone(o); // 角色音乐风格：只改写正在播放的音乐音符，不影响音效
     const at = o.at != null ? o.at : ctx.currentTime + (o.t || 0);
     const dur = o.dur || 0.1, vol = o.vol == null ? 0.2 : o.vol;
     const osc = ctx.createOscillator(); osc.type = o.type || 'square';
@@ -440,6 +441,54 @@ const Sound = (() => {
     },
   };
 
+  // ---------------- 角色音乐风格 ----------------
+  // 同一首曲子，换一个角色就换一种「演奏方式」：音色、音高、速度 + 一层专属的打击乐 / 动机
+  // quiet = 安静的曲目（标题 / 剧情电台、结局、终局黑暗）：只换音色，不加打击乐，保留气氛
+  const QUIET = { radio: 1, ending: 1, void: 1 };
+  const STYLES = {
+    // 小扫：轻快的小机器人——铁皮玩具般的音色，旋律高八度、短促跳跃；刷子沙锤 + 六条腿的三连拍嗒嗒声 + 专属五音动机
+    tin: {
+      tempo: 1.12,
+      tone(o) {
+        o = Object.assign({}, o);
+        if (o.f2 && o.f < 200) { o.f *= 1.35; o.f2 *= 1.4; o.vol *= 0.6; o.dur = Math.min(o.dur, 0.12); return o; } // 底鼓：更轻、更紧
+        if (o.type === 'sawtooth') { o.type = 'triangle'; o.vol = (o.vol || 0.2) * 1.3; if (o.ff) o.ff *= 1.4; return o; } // 厚重的锯齿波铺底 → 柔和的三角波
+        if (o.f > 300 && (o.type === 'square' || o.type === 'sine' || o.type === 'triangle')) {
+          if (o.f < 1400) o.f *= 2; // 旋律 / 琶音高八度
+          if (o.f2) o.f2 *= 2;
+          o.dur = Math.min(o.dur, 0.28); // 短促、跳跃
+          if (o.type === 'square') { o.type = 'triangle'; o.vol = (o.vol || 0.2) * 1.4; }
+        }
+        return o;
+      },
+      extra(s, at, bus, spb, name) {
+        if (QUIET[name]) return;
+        const st = s % 16;
+        if (st % 2 === 1) noise({ filter: 'highpass', f: 6500, dur: 0.035, vol: 0.02, at: at + spb * 0.12, bus }); // 刷子沙锤（带一点摇摆）
+        if (s % 3 === 0) tone({ type: 'square', f: s % 6 === 0 ? 1760 : 1320, at, dur: 0.018, vol: 0.016, filter: 'bandpass', ff: 1800, q: 4, bus }); // 六条腿：三连拍的嗒嗒声
+        const motif = { 0: 84, 2: 88, 4: 91, 6: 88, 10: 86 }, k = s % 64; // 专属动机：每 4 小节出现一次
+        if (Math.floor(s / 64) % 2 === 1 && motif[k]) tone({ type: 'triangle', f: N(motif[k]), at, dur: 0.16, vol: 0.035, bus, send: 0.4 });
+      },
+    },
+  };
+  let style = null, styling = null;
+  // 切换角色音乐风格（null = 原版）；正在播放的曲子会立刻换成新的演奏方式
+  function setStyle(id) {
+    const S = STYLES[id] || null; if (S === style) return;
+    style = S;
+    if (curName) { const n = curName; curName = null; music(n); }
+  }
+  function styled(name, base) {
+    const S = style; if (!S) return base;
+    return {
+      bpm: QUIET[name] ? base.bpm : base.bpm * S.tempo, // 安静的曲目保持原速
+      step(s, at, bus, spb) {
+        styling = S; try { base.step(s, at, bus, spb); } finally { styling = null; }
+        S.extra(s, at, bus, spb, name);
+      },
+    };
+  }
+
   function music(name) {
     if (!ctx) { pending = name; return; }
     if (name === curName) return;
@@ -449,7 +498,7 @@ const Sound = (() => {
       old.gain.cancelScheduledValues(t); old.gain.setValueAtTime(old.gain.value, t); old.gain.linearRampToValueAtTime(0.0001, t + 0.8);
       setTimeout(() => { try { old.disconnect(); } catch (e) { /* */ } }, 1300);
     }
-    curName = name; cur = name ? TRACKS[name] : null;
+    curName = name; cur = name && TRACKS[name] ? styled(name, TRACKS[name]) : null;
     if (!cur) { trackGain = null; return; }
     trackGain = ctx.createGain(); trackGain.gain.setValueAtTime(0.0001, t); trackGain.gain.linearRampToValueAtTime(1, t + 0.7);
     trackGain.connect(musicBus);
@@ -474,5 +523,5 @@ const Sound = (() => {
     const target = k === 'master' && muted ? 0 : BASE[k] * vol[k];
     node.gain.setTargetAtTime(target, ctx.currentTime, 0.03);
   }
-  return { init, sfx, music, laserLoop, toggleMute, setVolume, get volumes() { return vol; }, get muted() { return muted; }, get ready() { return !!ctx; } };
+  return { init, sfx, music, setStyle, get musicInfo() { return cur ? { name: curName, bpm: cur.bpm, style: style ? Object.keys(STYLES).find((k) => STYLES[k] === style) : null } : null; }, laserLoop, toggleMute, setVolume, get volumes() { return vol; }, get muted() { return muted; }, get ready() { return !!ctx; } };
 })();

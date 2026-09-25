@@ -207,7 +207,7 @@ class MatrixCtl {
   }
   // 冲刺时调用：在冲刺起点留下残影
   spawnEcho(p, g) {
-    this.echoes.push({ x: p.x, y: p.y + p.h - 28, f: p.facing, og: p.onGround, t: 0, life: PL3.ECHO_LIFE }); // 残影总是站立高度
+    this.echoes.push({ x: p.x, y: p.y + p.h - 28, f: p.facing, og: p.onGround, t: 0, life: PL3.ECHO_LIFE, C: p.C, h: p.h }); // 残影总是站立高度（判定用）；C / h = 画成哪个角色
     if (this.echoes.length > PL3.ECHO_MAX) this.echoes.shift();
     Sound.sfx.echo();
     g.particles.burst(p.cx, p.cy, 10, { color: ['#2f9', '#bfe', '#fff'], smin: 30, smax: 120, lmin: 0.2, lmax: 0.45, add: true, szmin: 1.5, szmax: 3 });
@@ -255,8 +255,9 @@ class MatrixCtl {
     for (const e of this.echoes) {
       const k = e.t / e.life, blink = k > 0.75 && (g.t * 14) % 2 < 1;
       ctx.globalAlpha = (blink ? 0.2 : 0.55) * Math.min(1, e.t * 10);
-      const body = ghostBody(e.og);
-      Player.prototype.drawBody.call(body, ctx, e.x + (Math.random() < 0.05 ? rand(-2, 2) : 0), e.y, e.f, 1, 1, g, '#2f9');
+      const body = ghostBody(e.og), eh = e.h || 28;
+      if (e.C && e.C.draw) { body.C = e.C; body.h = eh; }
+      Player.prototype.drawBody.call(body, ctx, e.x + (Math.random() < 0.05 ? rand(-2, 2) : 0), e.y + 28 - (body.C ? eh : 28), e.f, 1, 1, g, '#2f9');
       ctx.globalAlpha = 0.5;
       ctx.fillStyle = 'rgba(40,255,150,0.35)';
       for (let i = 0; i < 4; i++) ctx.fillRect(e.x - 2, e.y + ((g.t * 50 + i * 9) % 32) - 2, 24, 1);
@@ -994,23 +995,26 @@ class MirrorLazarus {
       ctx.stroke(); ctx.setLineDash([]);
     }
     const body = Object.assign(ghostBody(!this.air), { vx: this.vx, run: this.run });
+    // 镜像的是玩家当前的角色：小扫的周目里画成放大的小扫（放大到和判定框差不多高）
+    const pc = g.player && g.player.C, alt = pc && pc.draw, S = alt ? 3 : 2, by = alt ? -pc.h : -28;
+    if (alt) { body.C = pc; body.h = pc.h; }
     if (this.state === 'record') { // 从录像的第一帧开始逐行成形
       const k = clamp(this.clock / this.delay, 0, 1);
       ctx.save(); ctx.beginPath(); ctx.rect(this.x - 40, this.y - 64 * k, 80, 64 * k); ctx.clip();
       ctx.globalAlpha = 0.25 + k * 0.35;
-      ctx.translate(this.x, this.y); ctx.scale(2, 2);
-      Player.prototype.drawBody.call(body, ctx, -10, -28, this.f, 1, 1, g, '#f35');
+      ctx.translate(this.x, this.y); ctx.scale(S, S);
+      Player.prototype.drawBody.call(body, ctx, -10, by, this.f, 1, 1, g, '#f35');
       ctx.restore(); ctx.globalAlpha = 1;
       ctx.fillStyle = 'rgba(255,120,140,0.9)'; ctx.fillRect(this.x - 28, this.y - 64 * k, 56, 2);
       return;
     }
     const blink = this.hitCd > 0 && (t * 16) % 2 < 1;
-    ctx.save(); ctx.translate(this.x + (Math.random() < 0.05 ? rand(-4, 4) : 0), this.y); ctx.scale(2, 2);
+    ctx.save(); ctx.translate(this.x + (Math.random() < 0.05 ? rand(-4, 4) : 0), this.y); ctx.scale(S, S);
     ctx.globalAlpha = blink ? 0.3 : 0.9;
     if (this.flash > 0 && ctx.filter !== undefined) ctx.filter = 'brightness(2.5)';
-    Player.prototype.drawBody.call(body, ctx, -10, -28, this.f, 1, 1, g, '#c81e3c');
+    Player.prototype.drawBody.call(body, ctx, -10, by, this.f, 1, 1, g, '#c81e3c');
     ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = blink ? 0.1 : 0.35;
-    Player.prototype.drawBody.call(body, ctx, -10 + Math.sin(t * 9) * 0.8, -28, this.f, 1, 1, g, '#ff5a78');
+    Player.prototype.drawBody.call(body, ctx, -10 + Math.sin(t * 9) * 0.8, by, this.f, 1, 1, g, '#ff5a78');
     ctx.globalCompositeOperation = 'source-over'; ctx.filter = 'none';
     ctx.restore(); ctx.globalAlpha = 1;
     // 红光

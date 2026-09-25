@@ -473,7 +473,7 @@ class Colossus {
     }
   }
   bounce(g) {
-    const p = g.player; p.y = this.body().y - p.h; p.vy = -640; p.vx = Math.sign(p.cx - this.x || 1) * 320; p.canDash = true;
+    const p = g.player; p.cling = null; p.y = this.body().y - p.h; p.vy = -640; p.vx = Math.sign(p.cx - this.x || 1) * 320; p.canDash = true;
     Sound.sfx.clang(); g.shake(3);
   }
 

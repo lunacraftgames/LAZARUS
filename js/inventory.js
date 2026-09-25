@@ -165,6 +165,7 @@ const SteamBackend = {
 
 const Inventory = {
   p: null, backend: LocalBackend, onGrant: null,
+  charWeapon: null, // 当前角色的专属武器（例如小扫的旋转刷）：有的话只能用它，不能切换
   init() {
     if (typeof window !== 'undefined' && window.LAZARUS_STEAM) this.backend = SteamBackend;
     const d = this.backend.load();
@@ -172,7 +173,7 @@ const Inventory = {
       v: 1, abilities: {}, items: [], nextIid: 1,
       equipped: { paint: 2000, trail: 3000, rebuild: 4000, blade: 5000 },
       ch1Clear: false, playtime: 0, nextPlaytimeDrop: 30 * 60, seen: {},
-      chipLog: {}, chipDone: {}, hiddenEnd: false, // 记忆芯片收藏（跨周目累计）、已发放的章节收藏奖励、隐藏结局是否解锁
+      chipLog: {}, chipDone: {}, hiddenEnd: false, char: 'lazarus', charSeen: {}, // char = 最近一次开新游戏选的角色（章节选择重玩时使用） // 记忆芯片收藏（跨周目累计）、已发放的章节收藏奖励、隐藏结局是否解锁
     }, d || {});
     if (this.backend.sync) this.backend.sync();
   },
@@ -180,16 +181,17 @@ const Inventory = {
   ability(k) { return !!this.p.abilities[k]; },
   // ---------- 武器：可以在已拥有的武器之间切换 ----------
   owned() { return WEAPON_KEYS.filter((k) => this.ability(k)); },
-  canAttack() { return this.owned().length > 0; },
+  canAttack() { return !!this.charWeapon || this.owned().length > 0; },
   weapon() {
     if (this.preview && this.preview.weapon) return this.preview.weapon;
+    if (this.charWeapon) return this.charWeapon;
     const own = this.owned(); if (!own.length) return null;
     if (own.includes(this.p.weapon)) return this.p.weapon;
     return own.includes('relicBlade') ? 'relicBlade' : own[0]; // 旧存档：默认拿最强的近战武器
   },
   setWeapon(k) { if (!this.ability(k)) return false; this.p.weapon = k; this.save(); return true; },
   cycleWeapon(dir) {
-    const own = this.owned(); if (own.length < 2) return null;
+    const own = this.owned(); if (own.length < 2 || this.charWeapon) return null;
     const i = own.indexOf(this.weapon());
     this.p.weapon = own[(i + (dir || 1) + own.length) % own.length]; this.save();
     return this.p.weapon;

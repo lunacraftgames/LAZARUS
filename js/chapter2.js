@@ -304,7 +304,7 @@ class SlimePuddle {
     this.t += dt; if (this.life && this.t > this.life) { this.dead = true; return; }
     const p = g.player;
     if (g.state === 'play' && p.onGround && p.x + p.w > this.x + 4 && p.x < this.x + this.w - 4 && Math.abs(p.y + p.h - (this.y + this.h)) < 6) {
-      if (p.slimeT <= 0) { Sound.sfx.slime(); g.toastHint('踩到粘液：3 秒内跳跃减半、不能二段跳'); }
+      if (p.slimeT <= 0) { Sound.sfx.slime(); g.toastHint(charText('踩到粘液：3 秒内跳跃减半、不能二段跳')); }
       p.slimeT = PL.SLIME_T;
     }
   }
@@ -410,7 +410,7 @@ class Bouncer {
   // 被踩：玩家被高高弹起（借力跳高）；侧面接触：致命
   touch(p, g) {
     if (stompable(p, this, 14)) {
-      p.y = this.y - p.h; p.vy = -1050; p.jumping = false; p.jumpsLeft = 1; p.canDash = true; p.dashT = 0; p.sx = 0.7; p.sy = 1.4;
+      p.cling = null; p.y = this.y - p.h; p.vy = -1050; p.jumping = false; p.jumpsLeft = 1; p.canDash = true; p.dashT = 0; p.sx = 0.7; p.sy = 1.4;
       this.squash = 1; Sound.sfx.bounce(); Input.rumble(0.1, 0.5, 90);
       g.particles.burst(p.cx, this.y, 10, { color: ['#4ad0c0', '#bff'], smin: 60, smax: 180, angle: -Math.PI / 2, spread: 0.9, lmin: 0.2, lmax: 0.4, add: true });
     } else g.killPlayer();
