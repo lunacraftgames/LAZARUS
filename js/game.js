@@ -912,6 +912,7 @@ const Game = {
     ctx.fillStyle = Input.usingPad ? 'rgba(120,255,220,0.75)' : 'rgba(200,200,200,0.5)'; ctx.font = '12px ' + FONT;
     ctx.fillText(Input.usingPad ? '已连接：' + Input.padName : '支持 Xbox / PS4 / PS5 / Switch Pro 手柄与触屏（手柄插上后按任意键）', tx, 492);
     if ((t * 1.5) % 2 < 1.4) { ctx.fillStyle = 'rgba(120,255,220,0.8)'; ctx.font = '12px ' + MONO; ctx.fillText('● INCOMING SIGNAL · CH-07', tx, 520); }
+    ctx.fillStyle = 'rgba(200,200,200,0.35)'; ctx.font = '10px ' + MONO; ctx.textAlign = 'right'; ctx.fillText('v' + BUILD, VW - 10, VH - 10); ctx.textAlign = 'left';
     ctx.drawImage(Art.vignette, 0, 0); ctx.drawImage(Art.scan, 0, 0);
   },
   renderStory(ctx) {
