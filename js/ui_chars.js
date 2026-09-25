@@ -60,7 +60,7 @@ Object.assign(Game, {
     return p;
   },
   drawDiffPicker(ctx, newRun) {
-    const x0 = 60, y0 = 318, bw = 122, bh = 30, gap = 6;
+    const x0 = 60, y0 = 112 + CHAR_ORDER.length * 66 + 20, bw = 122, bh = 30, gap = 6; // 放在角色列表下面
     ctx.fillStyle = 'rgba(220,220,210,0.8)'; ctx.font = 'bold 14px ' + FONT;
     ctx.fillText(newRun ? tr('难度') : tr('当前周目难度'), x0, y0);
     const cur = newRun ? this.diffSel : Math.max(0, DIFFS.findIndex((d) => d.id === this.diff));
@@ -81,30 +81,30 @@ Object.assign(Game, {
     drawBackground(ctx, { x: t * 10, y: 0 }, THEMES.hall, t);
     ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0, 0, VW, VH);
     ctx.fillStyle = '#f2ead6'; ctx.font = 'bold 28px ' + FONT; ctx.fillText(newRun ? '选择角色与难度' : '角色', 60, 64);
-    ctx.fillStyle = 'rgba(200,190,160,0.6)'; ctx.font = '12px ' + MONO; if (!I18N.en) ctx.fillText(newRun ? 'NEW GAME · SELECT YOUR UNIT' : 'UNITS', 60 + (newRun ? 128 : 72), 64);
+    ctx.fillStyle = 'rgba(200,190,160,0.6)'; ctx.font = '12px ' + MONO; if (!I18N.en) { ctx.font = 'bold 28px ' + FONT; const tw = ctx.measureText(newRun ? '选择角色与难度' : '角色').width; ctx.font = '12px ' + MONO; ctx.fillText(newRun ? 'NEW GAME · SELECT UNIT & DIFFICULTY' : 'UNITS', 60 + tw + 14, 64); } // 英文小标题跟在中文标题后面
     ctx.fillStyle = newRun ? 'rgba(255,210,120,0.85)' : 'rgba(200,200,200,0.6)'; ctx.font = '13px ' + FONT;
     ctx.fillText(newRun ? '角色和难度只能在这里（新的游戏开始前）选择，选定后整个周目都不能更换。' : '这里只能查看。角色和难度只能在开始「新的游戏」时选择，游戏中途不能更换。', 60, 92);
 
     // 左侧：角色列表
     CHAR_ORDER.forEach((id, i) => {
-      const C = charDef(id), open = C.unlocked(), sel = i === this.charSel, x = 60, y = 116 + i * 92, w = 250, h = 80;
+      const C = charDef(id), open = C.unlocked(), sel = i === this.charSel, x = 60, y = 112 + i * 66, w = 250, h = 60; // 三个角色：每行 66 像素
       ctx.fillStyle = sel ? 'rgba(120,255,230,0.12)' : 'rgba(255,255,255,0.04)'; ctx.fillRect(x, y, w, h);
       if (sel) { ctx.fillStyle = C.color; ctx.fillRect(x, y, 4, h); }
       this.addHot(x, y, w, h, () => { if (this.charSel === i) this.charPick(i); else this.setCharSel(i); }, () => { this.charSel = i; });
       // 小头像
-      ctx.save(); ctx.beginPath(); ctx.rect(x + 10, y + 8, 64, 64); ctx.clip();
-      ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(x + 10, y + 8, 64, 64);
+      ctx.save(); ctx.beginPath(); ctx.rect(x + 8, y + 6, 48, 48); ctx.clip();
+      ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(x + 8, y + 6, 48, 48);
       if (!open) ctx.filter = 'brightness(0) opacity(0.7)';
       const p = this.charPreview(id), pc = p.cling; p.cling = null; p.onGround = true;
-      ctx.translate(x + 42, y + 66); ctx.scale(2, 2); p.drawBody(ctx, -p.w / 2, -p.h, 1, 1, 1, { t: sel ? t : 0, radio: null });
+      ctx.translate(x + 32, y + 51); ctx.scale(1.4, 1.4); p.drawBody(ctx, -p.w / 2, -p.h, 1, 1, 1, { t: sel ? t : 0, radio: null });
       p.cling = pc; ctx.filter = 'none'; ctx.restore();
-      ctx.fillStyle = open ? (sel ? '#fff' : 'rgba(230,230,220,0.8)') : 'rgba(160,160,160,0.6)'; ctx.font = (sel ? 'bold ' : '') + '20px ' + FONT;
-      ctx.fillText(open ? C.name : '？？？', x + 88, y + 34);
-      ctx.fillStyle = 'rgba(200,190,160,0.6)'; ctx.font = '11px ' + MONO; ctx.fillText(open ? (I18N.en ? C.model.split(' ')[0] : C.en) : 'LOCKED', x + 88, y + 52); // 英文模式下名字已经是英文，这里改写型号
+      ctx.fillStyle = open ? (sel ? '#fff' : 'rgba(230,230,220,0.8)') : 'rgba(160,160,160,0.6)'; ctx.font = (sel ? 'bold ' : '') + '18px ' + FONT;
+      ctx.fillText(open ? C.name : '？？？', x + 68, y + 24);
+      ctx.fillStyle = 'rgba(200,190,160,0.6)'; ctx.font = '11px ' + MONO; ctx.fillText(open ? (I18N.en ? C.model.split(' ')[0] : C.en) : 'LOCKED', x + 68, y + 39); // 英文模式下名字已经是英文，这里改写型号
       ctx.font = '11px ' + FONT;
-      if (!open) { ctx.fillStyle = 'rgba(255,160,120,0.8)'; ctx.fillText('🔒 未解锁', x + 88, y + 70); }
-      else if (!newRun && id === this.charId) { ctx.fillStyle = '#7ff'; ctx.fillText(Save.load() ? '✔ 当前周目' : '✔ 最近使用', x + 88, y + 70); }
-      else if (newRun && id === (Inventory.p.char || 'lazarus')) { ctx.fillStyle = 'rgba(120,255,230,0.7)'; ctx.fillText('上次使用', x + 88, y + 70); }
+      if (!open) { ctx.fillStyle = 'rgba(255,160,120,0.8)'; ctx.fillText('🔒 未解锁', x + 68, y + 53); }
+      else if (!newRun && id === this.charId) { ctx.fillStyle = '#7ff'; ctx.fillText(Save.load() ? '✔ 当前周目' : '✔ 最近使用', x + 68, y + 53); }
+      else if (newRun && id === (Inventory.p.char || 'lazarus')) { ctx.fillStyle = 'rgba(120,255,230,0.7)'; ctx.fillText('上次使用', x + 68, y + 53); }
     });
 
     // 右侧：详情

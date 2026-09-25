@@ -52,6 +52,7 @@ class Player {
       aimDown: false,                                // 空中向下瞄准
       h: this.K.H, crouch: false,                    // 下蹲：碰撞箱降低 1/3
       cling: null, clingCd: 0,                       // 小扫：贴墙 / 倒挂
+      fuel: this.C.fuel || 0, jetOn: false, slamming: false, stompCd: 0, // 阿特拉斯：喷气燃料、地面猛击
     });
   }
   hurt() { const t = this.crouch ? 3 : 6; return { x: this.x + 4, y: this.y + t, w: this.w - 8, h: this.h - t - 2 }; }
@@ -132,7 +133,7 @@ class Player {
     const wantCrouch = !this.C.noCrouch && this.onGround && !this.inWater && !cube && I.down('down') && !I.down('up') && this.dashT <= 0;
     if (wantCrouch && !this.crouch) { this.crouch = true; this.setHeight(PL.CROUCH_H); }
     else if (!wantCrouch && this.crouch && (cube || this.roomToStand(W))) { this.crouch = false; this.setHeight(PL.H); }
-    if (cube) { this.cling = null; return this.updateCube(dt, g, I, ctl); }
+    if (cube) { this.cling = null; this.slamming = false; this.jetOn = false; return this.updateCube(dt, g, I, ctl); }
     this.clingCd -= dt;
     this.vy *= gd;
     const footY = gd > 0 ? this.y + this.h + 1 : this.y - 1;
@@ -147,8 +148,9 @@ class Player {
     if (this.onGround) this.jumpsLeft = 1;
     if (this.slimeT > 0) { this.slimeT -= dt; if (Math.random() < 0.2) g.particles.add({ x: this.x + rand(2, this.w - 2), y: this.y + rand(4, this.h), vx: 0, vy: rand(20, 60), life: 0.5, size: 3, color: '#8f4', grav: 200 }); }
 
-    // ---- 冲刺 ----
-    if (I.hit('dash')) {
+    // ---- 冲刺（阿特拉斯：空中 = 地面猛击，地上 = 液压踏地）----
+    if (this.C.jet && I.hit('dash')) this.atlasDash(g, I, ctl);
+    else if (I.hit('dash')) {
       if (this.dashLock > 0) { Sound.sfx.denied(); g.hudDeny = 0.6; Input.rumble(0.3, 0, 120); }
       else if (this.canDash && this.dashCd <= 0) {
         let dx = mx, dy = (I.down('down') ? 1 : 0) - (I.down('up') ? 1 : 0); // 同时按住「向上」+ 冲刺 = 向上冲刺
@@ -249,6 +251,7 @@ class Player {
       this.vy = Math.min(this.vy + grav * dt, MAXFALL);
       if (this.jumping && !I.down('jump') && this.vy < -220 && !wire) { this.vy *= 0.48; this.jumping = false; }
       if (this.vy >= 0) this.jumping = false;
+      if (this.C.jet) this.updateJet(dt, g, I); // 阿特拉斯：喷气悬停 / 地面猛击
       if (this.jumpBuf > 0 && this.coyote > 0) {
         this.jumpBuf = 0; this.coyote = 0;
         if (this.onGround && this.groundOneWay && I.down('down')) { this.dropT = 0.22; this.onGround = false; }
@@ -286,6 +289,7 @@ class Player {
         }
         if (this.dashT <= 0) this.vy = 0;
         if (ry.solid && ry.solid.owner && ry.solid.owner.onStand) ry.solid.owner.onStand(g);
+        if (this.slamming) this.slamLand(g);
       } else {
         this.vy = 0;
         if (this.dashT > 0 && this.dashDir.y < 0) this.dashT = 0;
@@ -327,7 +331,7 @@ class Player {
       return;
     }
     this.drawBody(ctx, this.x, this.y, this.facing, this.sx, this.sy, g);
-    if (this.atkSwing > 0) { if (this.C.weapon === 'brush') this.drawBrushSwing(ctx, g); else this.drawSlash(ctx, g); }
+    if (this.atkSwing > 0) { if (this.C.weapon === 'brush') this.drawBrushSwing(ctx, g); else if (this.C.weapon === 'fist') this.drawFistSwing(ctx, g); else this.drawSlash(ctx, g); }
     // 蓄力光：满了以后变成金色并闪烁
     const Wc = WPN[Inventory.weapon()];
     if (Wc && Wc.charge && this.chargeT > 0.12) {
