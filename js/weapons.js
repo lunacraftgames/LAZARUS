@@ -102,7 +102,8 @@ Object.assign(Game, {
   },
   // 远程武器开火
   fireWeapon(p, k, dir) {
-    const f = p.facing, sy = p.y + p.h - 15;
+    const f = p.facing, off = 15 - (p.crouch ? PL.CROUCH_ATK : 0); // 下蹲：枪口高度降低一半
+    const sy = (p.gd || 1) > 0 ? p.y + p.h - off : p.y + off;
     const gd = p.gd || 1; // 重力反转时「上 / 下」跟着翻转
     const base = dir === 'up' ? { x: 0, y: -gd } : dir === 'down' ? { x: 0, y: gd } : { x: f, y: 0 };
     const mx = p.cx + base.x * 16, my = (dir === 'side' ? sy : p.cy) + base.y * 16;
