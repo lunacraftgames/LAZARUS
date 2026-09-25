@@ -48,12 +48,18 @@ const Game = {
     this.toTitle();
     let last = performance.now(), acc = 0;
     const STEP = 1 / 120;
+    const seen = new Set();
     const frame = (now) => {
+      requestAnimationFrame(frame); // 先排好下一帧：就算这一帧出错，游戏也不会整个卡死
       let dt = (now - last) / 1000; last = now; if (dt > 0.1) dt = 0.1;
       acc += dt;
-      while (acc >= STEP) { this.update(STEP); acc -= STEP; }
-      this.render();
-      requestAnimationFrame(frame);
+      try {
+        while (acc >= STEP) { this.update(STEP); acc -= STEP; }
+        this.render();
+      } catch (e) {
+        acc = 0;
+        if (!seen.has(e.message)) { seen.add(e.message); console.error(e); } // 同一个错误只记一次
+      }
     };
     requestAnimationFrame(frame);
   },

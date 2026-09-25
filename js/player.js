@@ -343,7 +343,7 @@ class Player {
 
   drawSlash(ctx, g) {
     const sk = Inventory.equipped('blade'), k = 1 - this.atkSwing / (this.atkSwingMax || 0.12);
-    const feet = this.y + this.h, cx = this.cx, cy = feet - this.K.H / 2 + (this.crouch && !this.atkDown && !this.atkUp ? PL.CROUCH_ATK : 0);
+    const feet = this.y + this.h, cx = this.cx, cy = feet - (this.K || PL).H / 2 + (this.crouch && !this.atkDown && !this.atkUp ? PL.CROUCH_ATK : 0);
     ctx.save();
     if (this.crouch) { ctx.beginPath(); ctx.rect(cx - 200, feet - 300, 400, 300); ctx.clip(); } // 下蹲：刀光不画到地面以下
     ctx.translate(cx, cy);
