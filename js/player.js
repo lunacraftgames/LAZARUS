@@ -7,10 +7,20 @@ const PL = {
   JUMP: 740, COYOTE: 0.1, BUFFER: 0.13,
   DASH_SPEED: 680, DASH_TIME: 0.15, DASH_CD: 0.28,
   SPRING: 1150,
-  // 武器节奏：active = 判定持续时间，cd = 两次挥砍的间隔，swing = 刀光动画时长
-  SABRE: { active: 0.09, cd: 0.17, swing: 0.12 },   // 仪仗军刀：轻快
-  RELIC: { active: 0.11, cd: 0.24, swing: 0.16 },   // 巨像残刃：更重，但攻击距离更长、可破甲
+  // 第二章
+  DJUMP: 640,            // 二段跳（推进囊）
+  SLIME_T: 3,            // 粘液：持续 3 秒，跳跃高度减半且不能二段跳
+  WATER: { GRAV: 780, MAXFALL: 230, RUN: 190, ACC: 650, DEC: 150, SWIM: 420, SWIM_CD: 0.22, EXIT: 660 }, // 高密度培养液：低重力、惯性大
 };
+
+// 武器：active = 判定持续时间，cd = 两次出手的间隔，swing = 刀光动画时长，reach = 攻击距离，arc = 刀光半径
+const WPN = {
+  sabre: { melee: true, active: 0.09, cd: 0.17, swing: 0.12, reach: 46, arc: 30 },               // 轻快，可弹反
+  relicBlade: { melee: true, active: 0.12, cd: 0.34, swing: 0.2, reach: 64, arc: 44, charge: 0.6 }, // 沉重，破盾，蓄力重劈
+  flintlock: { gun: true, cd: 0.95 },                                                             // 一发一装填，有后坐力
+  sporeGun: { gun: true, cd: 0.75 },                                                              // 三发扇形孢子
+};
+const HEAVY = { active: 0.16, cd: 0.45, swing: 0.26, reach: 92, arc: 62 };
 
 class Player {
   constructor(x, y) { this.w = 20; this.h = 28; this.reset(x, y); }
@@ -20,13 +30,17 @@ class Player {
       coyote: 0, jumpBuf: 0, jumping: false, dashT: 0, dashCd: 0, canDash: true, dashLock: 0,
       dashDir: { x: 1, y: 0 }, facing: 1, dead: false, dropT: 0, run: 0, sx: 1, sy: 1,
       spawnT: 0, trail: [], trailT: 0, prevBottom: y + 28, airT: 0,
-      atkT: 0, atkCd: 0, atkDown: false, atkHits: new Set(), atkSwing: 0,
+      atkT: 0, atkCd: 0, atkDown: false, atkHits: new Set(), atkSwing: 0, chargeT: -1, atkHeavy: false,
+      jumpsLeft: 1, slimeT: 0, inWater: false, swimCd: 0,
     });
   }
   hurt() { return { x: this.x + 4, y: this.y + 6, w: this.w - 8, h: this.h - 8 }; }
   attackBox() {
     if (this.atkT <= 0) return null;
-    const R = Inventory.ability('relicBlade') ? 60 : 46; // 巨像残刃攻击距离更长
+    const W = this.atkHeavy ? HEAVY : WPN[Inventory.weapon()];
+    if (!W || !W.reach) return null;
+    const R = W.reach;
+    if (this.atkHeavy) return { x: this.facing > 0 ? this.x + this.w - 10 : this.x + 10 - R, y: this.y - 26, w: R, h: this.h + 34 };
     if (this.atkDown) return { x: this.x - 12, y: this.y + this.h - 6, w: this.w + 24, h: R - 8 };
     return { x: this.facing > 0 ? this.x + this.w - 6 : this.x + 6 - R, y: this.y - 10, w: R, h: this.h + 16 };
   }
@@ -46,6 +60,14 @@ class Player {
     const mx = (I.down('right') ? 1 : 0) - (I.down('left') ? 1 : 0);
     if (I.hit('jump')) this.jumpBuf = PL.BUFFER; else this.jumpBuf -= dt;
     if (this.onGround) { this.coyote = PL.COYOTE; if (this.dashT <= 0) this.canDash = true; } else this.coyote -= dt;
+    // ---- 培养液（水下低重力）与粘液状态 ----
+    const wasWater = this.inWater;
+    this.inWater = !!(W.pointWater && W.pointWater(this.cx, this.cy));
+    if (this.inWater !== wasWater && g.onSplash) g.onSplash(this, this.inWater);
+    this.swimCd -= dt;
+    if (this.inWater) { if (this.slimeT > 0) { this.slimeT = 0; g.toastHint && g.toastHint('培养液冲掉了粘液'); } this.jumpsLeft = 1; if (this.dashT <= 0) this.canDash = true; }
+    if (this.onGround) this.jumpsLeft = 1;
+    if (this.slimeT > 0) { this.slimeT -= dt; if (Math.random() < 0.2) g.particles.add({ x: this.x + rand(2, this.w - 2), y: this.y + rand(4, this.h), vx: 0, vy: rand(20, 60), life: 0.5, size: 3, color: '#8f4', grav: 200 }); }
 
     // ---- 冲刺 ----
     if (I.hit('dash')) {
@@ -63,21 +85,44 @@ class Player {
       }
     }
 
-    // ---- 攻击：巨像残刃（通关第一章后解锁，账号绑定） ----
-    this.atkCd -= dt; if (this.atkT > 0) this.atkT -= dt;
-    if (I.hit('attack')) this.atkBuf = 0.12; else this.atkBuf = (this.atkBuf || 0) - dt; // 攻击输入缓冲：冷却快结束时按下也会出刀
-    if (this.atkBuf > 0 && Inventory.canAttack() && this.atkCd <= 0) {
-      const W = Inventory.ability('relicBlade') ? PL.RELIC : PL.SABRE;
+    // ---- 攻击 / 切换武器 ----
+    this.atkCd -= dt; if (this.atkT > 0) this.atkT -= dt; else this.atkHeavy = false;
+    if (I.hit('swap')) g.swapWeapon();
+    const wk = Inventory.weapon(), WP = WPN[wk];
+    if (I.hit('attack')) this.atkBuf = 0.12; else this.atkBuf = (this.atkBuf || 0) - dt; // 攻击输入缓冲：冷却快结束时按下也会出手
+    if (this.atkBuf > 0 && WP && this.atkCd <= 0) {
       this.atkBuf = 0;
-      this.atkDown = !this.onGround && I.down('down');
-      this.atkT = W.active; this.atkCd = W.cd; this.atkCdMax = W.cd; this.atkHits = new Set(); this.atkSwing = W.swing; this.atkSwingMax = W.swing;
-      Sound.sfx.slash(); Input.rumble(0, 0.2, 50);
+      if (WP.melee) {
+        this.atkDown = !this.onGround && I.down('down');
+        this.atkT = WP.active; this.atkCd = WP.cd; this.atkCdMax = WP.cd; this.atkHits = new Set(); this.atkSwing = WP.swing; this.atkSwingMax = WP.swing; this.atkHeavy = false;
+        Sound.sfx.slash(); Input.rumble(0, 0.2, 50);
+        if (WP.charge) this.chargeT = 0; // 巨像残刃：出刀后继续按住 = 蓄力
+      } else {
+        const dir = I.down('up') ? 'up' : !this.onGround && I.down('down') ? 'down' : 'side';
+        this.atkCd = WP.cd; this.atkCdMax = WP.cd;
+        g.fireWeapon(this, wk, dir);
+      }
     }
+    // 巨像残刃蓄力：按住约 0.6 秒后松开 → 重劈（地面上还会放出冲击波）
+    if (WP && WP.charge && this.chargeT >= 0) {
+      if (I.down('attack')) {
+        const before = this.chargeT; this.chargeT += dt;
+        if (before < WP.charge && this.chargeT >= WP.charge) { Sound.sfx.recharge(); Input.rumble(0.1, 0.3, 80); }
+      } else {
+        if (this.chargeT >= WP.charge) {
+          this.atkDown = false; this.atkHeavy = true;
+          this.atkT = HEAVY.active; this.atkCd = HEAVY.cd; this.atkCdMax = HEAVY.cd; this.atkHits = new Set(); this.atkSwing = HEAVY.swing; this.atkSwingMax = HEAVY.swing;
+          g.heavySlash(this);
+        }
+        this.chargeT = -1;
+      }
+    } else if (!WP || !WP.charge) this.chargeT = -1;
     this.atkSwing = Math.max(0, this.atkSwing - dt);
 
     if (this.dashT > 0) {
       this.dashT -= dt;
-      this.vx = this.dashDir.x * PL.DASH_SPEED; this.vy = this.dashDir.y * PL.DASH_SPEED;
+      const ds = this.inWater ? PL.DASH_SPEED * 0.7 : PL.DASH_SPEED;
+      this.vx = this.dashDir.x * ds; this.vy = this.dashDir.y * ds;
       const grounded = this.dashDir.y === 0 && (W.supportAt(this.x + 2, this.y + this.h + 1) || W.supportAt(this.x + this.w - 2, this.y + this.h + 1));
       if (grounded) this.coyote = PL.COYOTE;
       this.trailT -= dt;
@@ -92,6 +137,22 @@ class Player {
       } else if (this.dashT <= 0) {
         this.vx *= 0.6; this.vy = this.vy < 0 ? this.vy * 0.45 : this.vy * 0.5;
       }
+    } else if (this.inWater) {
+      // 水下：惯性大、极难刹车，可以无限次「漂浮跳跃」
+      const Wt = PL.WATER;
+      this.vx = approach(this.vx, mx * Wt.RUN, (mx ? Wt.ACC : Wt.DEC) * dt);
+      if (mx) this.facing = mx;
+      this.vy = clamp(this.vy + Wt.GRAV * dt, -720, Wt.MAXFALL);
+      this.jumping = false;
+      if (this.jumpBuf > 0 && this.swimCd <= 0) {
+        this.jumpBuf = 0; this.swimCd = Wt.SWIM_CD;
+        const nearSurface = !W.pointWater(this.cx, this.y - 6);
+        this.vy = nearSurface ? -Wt.EXIT : Math.min(this.vy, 0) - Wt.SWIM * 0.8 - 80;
+        this.vy = Math.max(this.vy, -Wt.EXIT);
+        Sound.sfx.swim && Sound.sfx.swim();
+        for (let i = 0; i < 5; i++) g.particles.add({ x: this.cx + rand(-8, 8), y: this.y + this.h, vx: rand(-20, 20), vy: rand(-60, -20), life: rand(0.5, 1), size: rand(2, 4), color: 'rgba(180,240,255,0.8)', shape: 'ring' });
+      }
+      if (Math.random() < 0.06) g.particles.add({ x: this.cx + rand(-4, 4), y: this.y + 4, vx: rand(-10, 10), vy: rand(-50, -30), life: 1, size: 2, color: 'rgba(180,240,255,0.7)', shape: 'ring' });
     } else {
       const target = mx * PL.RUN;
       let acc = this.onGround ? (mx ? PL.ACC_G : PL.DEC_G) : (mx ? PL.ACC_A : PL.DEC_A);
@@ -108,9 +169,19 @@ class Player {
         this.jumpBuf = 0; this.coyote = 0;
         if (this.onGround && this.groundOneWay && I.down('down')) { this.dropT = 0.22; this.onGround = false; }
         else {
-          this.vy = -PL.JUMP; this.jumping = true; this.onGround = false; this.sx = 0.75; this.sy = 1.3;
+          this.vy = -PL.JUMP * (this.slimeT > 0 ? 0.71 : 1); this.jumping = true; this.onGround = false; this.sx = 0.75; this.sy = 1.3;
           Sound.sfx.jump();
-          g.particles.burst(this.cx, this.y + this.h, 6, { color: '#8a8070', smin: 20, smax: 80, angle: -Math.PI / 2, spread: 1.3, lmin: 0.2, lmax: 0.4, grav: 200 });
+          g.particles.burst(this.cx, this.y + this.h, 6, { color: this.slimeT > 0 ? '#8f4' : '#8a8070', smin: 20, smax: 80, angle: -Math.PI / 2, spread: 1.3, lmin: 0.2, lmax: 0.4, grav: 200 });
+        }
+      } else if (this.jumpBuf > 0 && !this.onGround && this.coyote <= 0 && this.jumpsLeft > 0 && Inventory.ability('doubleJump')) {
+        // ---- 二段跳（推进囊）；被粘液粘住时不可用 ----
+        if (this.slimeT > 0) { if (I.hit('jump')) { Sound.sfx.denied(); g.hudSlime = 0.6; } }
+        else {
+          this.jumpBuf = 0; this.jumpsLeft = 0;
+          this.vy = -PL.DJUMP; this.jumping = true; this.sx = 0.8; this.sy = 1.25;
+          Sound.sfx.djump ? Sound.sfx.djump() : Sound.sfx.jump();
+          g.particles.add({ x: this.cx, y: this.y + this.h, size: 4, grow: 90, life: 0.3, shape: 'ring', color: '#7ff', add: true });
+          g.particles.burst(this.cx, this.y + this.h, 8, { color: ['#7ff', '#bff'], smin: 40, smax: 120, angle: Math.PI / 2, spread: 0.9, lmin: 0.2, lmax: 0.4, add: true });
         }
       }
     }
@@ -161,6 +232,17 @@ class Player {
     }
     this.drawBody(ctx, this.x, this.y, this.facing, this.sx, this.sy, g);
     if (this.atkSwing > 0) this.drawSlash(ctx, g);
+    // 蓄力光：满了以后变成金色并闪烁
+    const Wc = WPN[Inventory.weapon()];
+    if (Wc && Wc.charge && this.chargeT > 0.12) {
+      const k = Math.min(1, this.chargeT / Wc.charge), full = k >= 1;
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = full ? `rgba(255,220,120,${0.6 + 0.4 * Math.sin(g.t * 30)})` : `rgba(255,200,120,${0.25 + k * 0.4})`;
+      ctx.lineWidth = full ? 3 : 2;
+      ctx.beginPath(); ctx.arc(this.cx, this.cy, 22 - k * 6, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * k); ctx.stroke();
+      if (full) { const gr = ctx.createRadialGradient(this.cx, this.cy, 2, this.cx, this.cy, 30); gr.addColorStop(0, 'rgba(255,220,120,0.35)'); gr.addColorStop(1, 'rgba(255,220,120,0)'); ctx.fillStyle = gr; ctx.fillRect(this.cx - 30, this.cy - 30, 60, 60); }
+      ctx.globalCompositeOperation = 'source-over';
+    }
   }
 
   drawSlash(ctx, g) {
@@ -170,8 +252,8 @@ class Player {
     if (this.atkDown) ctx.rotate(Math.PI / 2); else ctx.scale(this.facing, 1);
     const a0 = -1.3 + k * 0.4, a1 = a0 + 2.4 * Math.min(1, k * 2.2);
     ctx.globalCompositeOperation = 'lighter';
-    ctx.strokeStyle = `rgba(${sk.arc},${0.75 * (1 - k)})`; ctx.lineWidth = 10; ctx.lineCap = 'round';
-    const RR = Inventory.ability('relicBlade') ? 42 : 30;
+    ctx.strokeStyle = `rgba(${sk.arc},${0.75 * (1 - k)})`; ctx.lineWidth = this.atkHeavy ? 18 : 10; ctx.lineCap = 'round';
+    const RR = this.atkHeavy ? HEAVY.arc : (WPN[Inventory.weapon()] || WPN.sabre).arc || 30;
     ctx.beginPath(); ctx.arc(6, 0, RR, a0, a1); ctx.stroke();
     ctx.strokeStyle = `rgba(255,255,255,${0.9 * (1 - k)})`; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(6, 0, RR + 4, a0, a1); ctx.stroke();
@@ -201,9 +283,11 @@ class Player {
     const ph = this.run;
     const paint = tint ? null : Inventory.equipped('paint');
     const c = tint ? { a: tint, b: tint, d: tint, e: tint, k: tint, pack: tint, stripe: tint, visor: tint } : paint.pal;
+    const slimed = !tint && this.slimeT > 0;
     if (paint && paint.glitch && Math.random() < 0.04) ctx.translate(rand(-3, 3), 0);
     // 背上的残刃（已解锁时）
-    if (!tint && this.hasBlade !== false && Inventory.canAttack() && !(this.atkSwing > 0)) {
+    const curW = !tint && this.hasBlade !== false ? Inventory.weapon() : null;
+    if (curW && WPN[curW].melee && !(this.atkSwing > 0)) {
       const sk = Inventory.equipped('blade');
       ctx.lineCap = 'round';
       ctx.strokeStyle = sk.blade; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-16, -6); ctx.lineTo(-8, -28); ctx.stroke();
@@ -254,6 +338,23 @@ class Player {
     ctx.fillStyle = c.b; ctx.fillRect(-3, -24, 9, 5);
     ctx.fillStyle = c.a; ctx.fillRect(1 + sw, -19, 4, 8);
     ctx.fillStyle = c.d; ctx.fillRect(1 + sw, -12, 4, 3);
+    // 手里的枪
+    if (curW === 'flintlock') {
+      const kick = Math.max(0, (this.atkCd || 0) - 0.8) * 20;
+      ctx.save(); ctx.translate(3 + sw - kick, -11); ctx.rotate(-kick * 0.08);
+      ctx.fillStyle = '#5a3a20'; ctx.fillRect(-2, -1, 5, 5);            // 握把
+      ctx.fillStyle = '#8a6a36'; ctx.fillRect(0, -3, 5, 3);             // 击锤座
+      ctx.fillStyle = '#6a6e72'; ctx.fillRect(3, -3, 11, 2);            // 枪管
+      ctx.fillStyle = '#c9a030'; ctx.fillRect(12, -3.5, 2, 3);
+      ctx.restore();
+    } else if (curW === 'sporeGun') {
+      ctx.save(); ctx.translate(3 + sw, -11);
+      ctx.fillStyle = '#2a3a44'; ctx.fillRect(-2, -1, 5, 5);
+      ctx.fillStyle = 'rgba(120,240,200,0.85)'; ctx.beginPath(); ctx.ellipse(5, -3, 5, 3.5, 0, 0, 7); ctx.fill(); // 孢子囊
+      ctx.fillStyle = '#8a9aa6'; ctx.fillRect(9, -3.5, 5, 2);
+      ctx.fillStyle = '#c86ab0'; ctx.fillRect(3, -4, 1.5, 1.5);
+      ctx.restore();
+    }
     // 头
     ctx.fillStyle = c.e; ctx.fillRect(-6, -31, 13, 9);
     ctx.fillStyle = c.b; ctx.fillRect(-6, -31, 13, 2);
@@ -262,6 +363,11 @@ class Player {
     if (!tint) {
       ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = this.dashLock > 0 ? 'rgba(255,60,60,0.35)' : 'rgba(100,255,255,0.3)';
       ctx.fillRect(0, -30, 11, 7); ctx.globalCompositeOperation = 'source-over';
+    }
+    if (slimed) {
+      ctx.fillStyle = 'rgba(140,255,60,0.55)';
+      ctx.fillRect(-9, -23, 18, 4); ctx.fillRect(-6, -31, 13, 3);
+      ctx.fillRect(-7, -19, 3, 6 + Math.sin(t * 6) * 2); ctx.fillRect(4, -20, 3, 8 + Math.cos(t * 5) * 2);
     }
     ctx.restore();
   }

@@ -5,6 +5,11 @@
 // ============================================================
 const Sound = (() => {
   let ctx = null, master, musicBus, sfxBus, delayIn, noiseBuf;
+  // 音量（0~1，保存在本地）：主音量 / 音乐 / 音效
+  const BASE = { master: 0.9, music: 0.5, sfx: 0.8 };
+  const vol = { master: 1, music: 1, sfx: 1 };
+  try { Object.assign(vol, JSON.parse(localStorage.getItem('lazarus_audio') || '{}')); } catch (e) { /* */ }
+  for (const k in vol) vol[k] = Math.max(0, Math.min(1, +vol[k] || 0));
   let muted = false, curName = null, cur = null, trackGain = null, nextTime = 0, step = 0, pending = null;
   const N = (n) => 440 * Math.pow(2, (n - 69) / 12);
 
@@ -13,12 +18,12 @@ const Sound = (() => {
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
     ctx = new AC();
-    master = ctx.createGain(); master.gain.value = muted ? 0 : 0.9;
+    master = ctx.createGain(); master.gain.value = muted ? 0 : BASE.master * vol.master;
     const comp = ctx.createDynamicsCompressor();
     comp.threshold.value = -16; comp.ratio.value = 4; comp.attack.value = 0.005; comp.release.value = 0.2;
     master.connect(comp); comp.connect(ctx.destination);
-    musicBus = ctx.createGain(); musicBus.gain.value = 0.5; musicBus.connect(master);
-    sfxBus = ctx.createGain(); sfxBus.gain.value = 0.8; sfxBus.connect(master);
+    musicBus = ctx.createGain(); musicBus.gain.value = BASE.music * vol.music; musicBus.connect(master);
+    sfxBus = ctx.createGain(); sfxBus.gain.value = BASE.sfx * vol.sfx; sfxBus.connect(master);
     // 回声（用于音乐盒与琶音）
     delayIn = ctx.createGain();
     const dly = ctx.createDelay(1.5); dly.delayTime.value = 0.375;
@@ -133,6 +138,15 @@ const Sound = (() => {
       noise({ f: 600, dur: 1.4, vol: 0.22, attack: 0.1 });
     },
     cannon() { noise({ f: 1500, f2: 100, dur: 0.3, vol: 0.4 }); tone({ type: 'sine', f: 160, f2: 50, dur: 0.25, vol: 0.3 }); },
+    // 武器
+    gunshot() { noise({ f: 4000, f2: 300, dur: 0.16, vol: 0.4 }); tone({ type: 'square', f: 220, f2: 60, dur: 0.12, vol: 0.18 }); noise({ filter: 'highpass', f: 5000, dur: 0.03, vol: 0.25 }); },
+    reload() { tone({ type: 'square', f: 1400, dur: 0.03, vol: 0.05 }); tone({ type: 'square', f: 900, dur: 0.04, vol: 0.05, t: 0.07 }); },
+    sporeShot() { noise({ f: 1800, f2: 400, dur: 0.12, vol: 0.14 }); tone({ type: 'sine', f: 520, f2: 180, dur: 0.14, vol: 0.12 }); },
+    sporeBurst() { noise({ f: 700, f2: 200, dur: 0.25, vol: 0.12 }); },
+    heavy() { noise({ f: 900, f2: 60, dur: 0.4, vol: 0.4 }); tone({ type: 'sine', f: 110, f2: 35, dur: 0.35, vol: 0.35 }); },
+    parry() { [880, 1760, 2640].forEach((f, i) => tone({ type: 'sine', f, dur: 0.3 - i * 0.07, vol: 0.09 })); noise({ filter: 'highpass', f: 4000, dur: 0.06, vol: 0.2 }); },
+    ricochet() { tone({ type: 'sine', f: 2600, f2: 900, dur: 0.18, vol: 0.07 }); },
+    swap() { tone({ type: 'square', f: N(76), dur: 0.04, vol: 0.05 }); noise({ filter: 'highpass', f: 2500, dur: 0.05, vol: 0.12, t: 0.04 }); },
     zap() { tone({ type: 'sawtooth', f: 1800, f2: 200, dur: 0.12, vol: 0.035 }); },
     select() { tone({ type: 'square', f: N(79), dur: 0.06, vol: 0.06 }); },
     confirm() { tone({ type: 'square', f: N(72), dur: 0.08, vol: 0.07 }); tone({ type: 'square', f: N(79), dur: 0.16, vol: 0.07, t: 0.08 }); },
@@ -151,6 +165,19 @@ const Sound = (() => {
       [60, 67, 72, 76, 79, 84].forEach((n, i) => tone({ type: 'sawtooth', f: N(n), dur: 0.5, vol: 0.05, t: i * 0.09, filter: 'lowpass', ff: 2500, send: 0.4 }));
       tone({ type: 'sine', f: 60, f2: 30, dur: 1.0, vol: 0.3 });
     },
+    // ---- 第二章 ----
+    splash() { noise({ f: 1800, f2: 300, dur: 0.35, vol: 0.3 }); tone({ type: 'sine', f: 300, f2: 120, dur: 0.2, vol: 0.08 }); },
+    swim() { tone({ type: 'sine', f: 220, f2: 520, dur: 0.14, vol: 0.06 }); noise({ filter: 'bandpass', f: 900, dur: 0.1, vol: 0.06, q: 2 }); },
+    djump() { tone({ type: 'triangle', f: 420, f2: 900, dur: 0.14, vol: 0.08 }); noise({ filter: 'highpass', f: 3000, dur: 0.08, vol: 0.08 }); },
+    slime() { tone({ type: 'sine', f: 160, f2: 60, dur: 0.25, vol: 0.14, vib: 30, vibAmt: 25 }); noise({ f: 700, f2: 150, dur: 0.2, vol: 0.12 }); },
+    splat() { noise({ f: 900, f2: 120, dur: 0.18, vol: 0.14 }); },
+    pop() { noise({ f: 2500, f2: 200, dur: 0.3, vol: 0.35 }); tone({ type: 'sine', f: 240, f2: 60, dur: 0.25, vol: 0.2 }); },
+    throb() { tone({ type: 'sine', f: 90, f2: 55, dur: 0.14, vol: 0.2 }); },
+    bounce() { tone({ type: 'sine', f: 140, f2: 700, dur: 0.3, vol: 0.18, vib: 18, vibAmt: 60 }); },
+    wobble() { tone({ type: 'sine', f: 300, f2: 120, dur: 0.25, vol: 0.12, vib: 22, vibAmt: 40 }); },
+    saw() { tone({ type: 'sawtooth', f: 900, f2: 700, dur: 0.12, vol: 0.02, filter: 'highpass', ff: 1200 }); },
+    heartbeat() { tone({ type: 'sine', f: 70, f2: 40, dur: 0.16, vol: 0.35 }); tone({ type: 'sine', f: 60, f2: 35, dur: 0.18, vol: 0.28, t: 0.2 }); },
+    hatch() { noise({ f: 1200, f2: 200, dur: 0.3, vol: 0.2 }); tone({ type: 'square', f: 180, f2: 90, dur: 0.2, vol: 0.06 }); },
     clear() {
       [69, 72, 76, 81, 84].forEach((n, i) => tone({ type: 'square', f: N(n), dur: 0.14, vol: 0.06, t: i * 0.09, filter: 'lowpass', ff: 3500 }));
       [69, 72, 76].forEach((n) => tone({ type: 'triangle', f: N(n + 12), dur: 1.2, vol: 0.06, t: 0.45, send: 0.5 }));
@@ -224,6 +251,36 @@ const Sound = (() => {
     };
   }
   const TRACKS = {
+    // 第二章：进化育婴室——冷色、湿润、带气泡感的琶音
+    hive: {
+      bpm: 92,
+      step(s, at, bus, spb) {
+        const chords = [[50, 53, 57], [46, 50, 53], [48, 51, 55], [45, 49, 52]];
+        const bar = Math.floor(s / 16) % 4, st = s % 16, ch = chords[bar];
+        if (st === 0) for (const n of ch) tone({ type: 'sawtooth', f: N(n), at, dur: spb * 16, vol: 0.02, attack: spb * 6, filter: 'lowpass', ff: 700, bus });
+        if (st === 0 || st === 6 || st === 10) tone({ type: 'triangle', f: N(ch[0] - 24), at, dur: spb * 4, vol: 0.15, bus });
+        if (st % 2 === 0) { const n = ch[[0, 2, 1, 2, 0, 1, 2, 1][st / 2]] + 24; tone({ type: 'sine', f: N(n), f2: N(n) * 1.02, at, dur: spb * 1.4, vol: 0.03, bus, send: 0.55 }); }
+        if (st === 4 || st === 12) noise({ filter: 'bandpass', f: 1500, dur: 0.05, vol: 0.03, at, bus });
+        if (Math.random() < 0.08) tone({ type: 'sine', f: rand(600, 1400), f2: rand(1500, 2500), at, dur: 0.08, vol: 0.02, bus });
+        if (st === 0 && bar % 2 === 0) tone({ type: 'sine', f: 70, f2: 38, at, dur: 0.2, vol: 0.14, bus });
+      },
+    },
+    // 繁育者：心跳贯穿全曲
+    incubator: {
+      bpm: 132,
+      step(s, at, bus, spb) {
+        const roots = [45, 45, 41, 43], bar = Math.floor(s / 16) % 4, st = s % 16, r = roots[bar];
+        if (st === 0 || st === 3) tone({ type: 'sine', f: 80, f2: 38, at, dur: 0.2, vol: 0.45, bus });
+        if (st === 8 || st === 11) tone({ type: 'sine', f: 70, f2: 35, at, dur: 0.2, vol: 0.3, bus });
+        if (st === 4 || st === 12) noise({ filter: 'bandpass', f: 2200, dur: 0.1, vol: 0.14, at, bus });
+        if (st % 2 === 1) noise({ filter: 'highpass', f: 9000, dur: 0.02, vol: 0.03, at, bus });
+        tone({ type: 'sawtooth', f: N(r - 12 + (st % 4 === 2 ? 12 : 0)), at, dur: spb * 0.8, vol: 0.07, filter: 'lowpass', ff: 700, bus });
+        if (Math.floor(s / 64) % 2 === 1 && st % 4 === 0) {
+          const mel = [69, 72, 71, 67, 69, 76, 74, 72, 65, 69, 67, 64, 67, 71, 74, 71];
+          tone({ type: 'square', f: N(mel[(Math.floor(s / 4)) % 16]), at, dur: spb * 3, vol: 0.035, filter: 'lowpass', ff: 2500, bus, send: 0.3 });
+        }
+      },
+    },
     museum: makeMuseum(80, true),
     ending: makeMuseum(62, false),
     gallery: (() => { // 1-2 机械展区：更机械化
@@ -307,8 +364,16 @@ const Sound = (() => {
   }
   function toggleMute() {
     muted = !muted;
-    if (master) master.gain.setTargetAtTime(muted ? 0 : 0.9, ctx.currentTime, 0.05);
+    if (master) master.gain.setTargetAtTime(muted ? 0 : BASE.master * vol.master, ctx.currentTime, 0.05);
     return muted;
   }
-  return { init, sfx, music, laserLoop, toggleMute, get muted() { return muted; }, get ready() { return !!ctx; } };
+  function setVolume(k, v) {
+    vol[k] = Math.round(Math.max(0, Math.min(1, v)) * 20) / 20;
+    try { localStorage.setItem('lazarus_audio', JSON.stringify(vol)); } catch (e) { /* */ }
+    if (!ctx) return;
+    const node = { master, music: musicBus, sfx: sfxBus }[k];
+    const target = k === 'master' && muted ? 0 : BASE[k] * vol[k];
+    node.gain.setTargetAtTime(target, ctx.currentTime, 0.03);
+  }
+  return { init, sfx, music, laserLoop, toggleMute, setVolume, get volumes() { return vol; }, get muted() { return muted; }, get ready() { return !!ctx; } };
 })();

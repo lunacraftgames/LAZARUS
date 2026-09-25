@@ -10,6 +10,7 @@ const KEY_ROWS = [
   { a: 'jump', n: '跳跃', pad: true },
   { a: 'dash', n: '冲刺', pad: true },
   { a: 'attack', n: '攻击', pad: true },
+  { a: 'swap', n: '切换武器', pad: true },
   { a: 'inv', n: '仓库', pad: true },
   { a: 'restart', n: '自毁重构' },
   { a: 'mute', n: '静音' },
@@ -17,7 +18,7 @@ const KEY_ROWS = [
   { type: 'reset', n: '恢复默认键位' },
   { type: 'back', n: '返回' },
 ];
-const KEY_ACTION_NAMES = { left: '向左', right: '向右', up: '向上', down: '向下', jump: '跳跃', dash: '冲刺', attack: '攻击', inv: '仓库', restart: '自毁重构', mute: '静音' };
+const KEY_ACTION_NAMES = { left: '向左', right: '向右', up: '向上', down: '向下', jump: '跳跃', dash: '冲刺', attack: '攻击', swap: '切换武器', inv: '仓库', restart: '自毁重构', mute: '静音' };
 const KCOL_X = [290, 420, 550, 690], KCOL_W = [120, 120, 120, 200];
 
 Object.assign(Game, {
@@ -82,10 +83,10 @@ Object.assign(Game, {
     const hy = 92;
     ctx.font = 'bold 12px ' + FONT; ctx.fillStyle = 'rgba(200,220,215,0.7)';
     ['键位 1', '键位 2', '键位 3', Input.usingPad ? Input.padName : '手柄（Xbox 布局显示）'].forEach((h, i) => ctx.fillText(h, KCOL_X[i] + 8, hy));
-    const rowY = (i) => 100 + i * 28;
+    const rowY = (i) => 98 + i * 26;
     KEY_ROWS.forEach((R, i) => {
       const y = rowY(i), selRow = i === this.keyRow;
-      if (selRow) { ctx.fillStyle = 'rgba(120,255,230,0.07)'; ctx.fillRect(56, y, VW - 112, 26); }
+      if (selRow) { ctx.fillStyle = 'rgba(120,255,230,0.07)'; ctx.fillRect(56, y, VW - 112, 25); }
       ctx.font = (selRow ? 'bold ' : '') + '14px ' + FONT;
       if (R.type) {
         ctx.fillStyle = selRow ? '#7ff' : R.type === 'reset' ? '#f96' : '#e8e4d8';

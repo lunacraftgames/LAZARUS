@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<title>LAZARUS · 第一章 死寂博物馆</title>
+<title>LAZARUS</title>
 <style>
   html, body { margin: 0; height: 100%; background: #050607; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
   #wrap { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
@@ -17,6 +17,7 @@
   #td { left: 67px; bottom: 108px; width: 60px; height: 60px; font-size: 13px; }
   #tj { right: 24px; bottom: 30px; width: 88px; height: 88px; } #tx { right: 124px; bottom: 60px; }
   #ta { right: 44px; bottom: 132px; width: 60px; height: 60px; font-size: 13px; }
+  #tw { right: 132px; bottom: 150px; width: 52px; height: 52px; font-size: 12px; }
   #tp { right: 16px; top: 70px; width: 46px; height: 46px; font-size: 12px; }
 </style>
 </head>
@@ -29,6 +30,7 @@
   <div class="tb" id="tj" data-act="jump,confirm">跳跃</div>
   <div class="tb" id="tx" data-act="dash">冲刺</div>
   <div class="tb" id="ta" data-act="attack">攻击</div>
+  <div class="tb" id="tw" data-act="swap">换</div>
   <div class="tb" id="tp" data-act="pause">II</div>
 </div>
 <script src="js/core.js"></script>
@@ -40,8 +42,12 @@
 <script src="js/entities.js"></script>
 <script src="js/boss.js"></script>
 <script src="js/levels.js"></script>
+<script src="js/chapter2.js"></script>
 <script src="js/game.js"></script>
+<script src="js/weapons.js"></script>
+<script src="js/item_art.js"></script>
 <script src="js/ui_inventory.js"></script>
 <script src="js/ui_keys.js"></script>
+<script src="js/ui_audio.js"></script>
 </body>
 </html>

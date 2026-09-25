@@ -172,6 +172,7 @@ class Colossus {
     this.maxHp = 12; this.hp = 12; this.state = 'intro'; this.t = 0; this.short = short;
     this.walk = 0; this.lift = 0; this.headDrop = 0; this.crouch = 0; this.recoil = 0; this.flash = 0;
     this.patternIdx = 0; this.la = 0; this.beam = null; this.laserSnd = null; this.dead = false;
+    this.tilt = 0; this.headLow = 0; this.paw = 0; this.visor = 0; this.cannonRaise = 0; this.tremble = 0;
     this.stomped = false; this.doubled = false; this.shots = 0; this.shotT = 0; this.deathT = 0; this.hitOnce = false; this.phaseSeen = 1;
   }
   get phase() { return this.hp > 8 ? 1 : this.hp > 4 ? 2 : 3; }
@@ -204,12 +205,13 @@ class Colossus {
       if (this.x - ARENA.L < 170) this.facing = 1; else if (ARENA.R - this.x < 170) this.facing = -1; else this.faceTo(p);
       this.state = 'aim'; this.la = this.localTarget(p); Sound.sfx.laserCharge(1.0);
     } else if (a === 'leap') { this.state = 'crouch'; }
-    else if (a === 'mortar') { this.state = 'mortar'; this.shots = 0; this.shotT = 0.5; this.faceTo(p); }
+    else if (a === 'mortar') { this.state = 'mortarWind'; this.shots = 0; this.faceTo(p); Sound.sfx.clang(); }
   }
 
   update(dt, g) {
     this.t += dt; this.flash = Math.max(0, this.flash - dt);
     const p = g.player, ph = this.phase;
+    this.updatePose(dt, g);
     switch (this.state) {
       case 'intro':
         this.vy += 2400 * dt; this.y += this.vy * dt;
@@ -232,8 +234,7 @@ class Colossus {
         break;
       case 'windCharge':
         this.crouch = Math.min(1, this.t * 3) * 0.4;
-        if (Math.random() < 0.5) g.particles.add({ x: this.x - this.facing * 90, y: ARENA.FLOOR, vx: -this.facing * rand(60, 160), vy: rand(-120, -30), life: 0.5, size: 4, color: '#8e897e', grav: 600 });
-        if (this.t > [0.85, 0.7, 0.55][ph - 1]) { this.state = 'charge'; this.t = 0; this.crouch = 0; }
+        if (this.t > [1.0, 0.85, 0.7][ph - 1]) { this.state = 'charge'; this.t = 0; this.crouch = 0; }
         break;
       case 'charge': {
         const sp = [480, 600, 700][ph - 1];
@@ -270,8 +271,8 @@ class Colossus {
         if (this.t > 0.6) this.next(g);
         break;
       case 'crouch':
-        this.crouch = Math.min(1, this.t * 2.5);
-        if (this.t > 0.6) {
+        this.crouch = Math.min(1, this.t * 2.2);
+        if (this.t > [0.9, 0.78, 0.66][ph - 1]) {
           let tx = clamp(p.cx, 150, 810);
           if (tx > 300 && tx < 660) tx = tx < ARENA.CX ? 300 : 660;
           if (Math.abs(tx - this.x) < 60) tx = this.x < ARENA.CX ? 660 : 300;
@@ -285,6 +286,10 @@ class Colossus {
         if (k >= 1) { this.y = ARENA.FLOOR; this.land(g); }
         break;
       }
+      case 'mortarWind':
+        this.faceTo(p);
+        if (this.t > [0.85, 0.72, 0.6][ph - 1]) { this.state = 'mortar'; this.t = 0; this.shotT = 0; }
+        break;
       case 'mortar': {
         const N = [0, 3, 3, 5][ph];
         this.shotT -= dt; this.recoil = Math.max(0, this.recoil - dt * 4);
@@ -332,6 +337,48 @@ class Colossus {
     if (this.phase > this.phaseSeen && this.active) {
       this.phaseSeen = this.phase;
       g.say(this.phase === 2 ? RADIO.bossPhase2 : RADIO.bossPhase3);
+    }
+  }
+  // ---------------- 出招前的身体动作（不用文字，只看动作就能判断下一招） ----------------
+  //  冲撞：压低身体前倾、低头亮出头顶尖刺、后腿刨地扬尘、鼻孔喷蒸汽
+  //  激光：昂头后仰、面罩缝张开、光点向眼睛汇聚、胸口核心转红
+  //  跳砸：深蹲、全身颤抖、膝关节喷出白色蒸汽
+  //  古董炮：身体后仰、背上古炮缓缓抬高、引信冒火花和烟
+  updatePose(dt, g) {
+    const st = this.state, k = (v, tg, sp) => approach(v, tg, dt * sp);
+    const T = { tilt: 0, headLow: 0, visor: 0, cannonRaise: 0, tremble: 0 };
+    if (st === 'windCharge') { T.tilt = 0.13; T.headLow = 1; }
+    else if (st === 'charge') { T.tilt = 0.08; T.headLow = 1; }
+    else if (st === 'aim') { T.tilt = -0.07; T.visor = 1; }
+    else if (st === 'fire') { T.tilt = -0.04; T.visor = 1; }
+    else if (st === 'crouch') { T.tremble = 1; }
+    else if (st === 'mortarWind') { T.tilt = -0.1; T.cannonRaise = 1; }
+    else if (st === 'mortar') { T.tilt = -0.06; T.cannonRaise = 1; }
+    this.tilt = k(this.tilt, T.tilt, 0.6); this.headLow = k(this.headLow, T.headLow, 4); this.visor = k(this.visor, T.visor, 4);
+    this.cannonRaise = k(this.cannonRaise, T.cannonRaise, 2.2); this.tremble = k(this.tremble, T.tremble, 5);
+    const f = this.facing, y = this.y;
+    if (st === 'windCharge') {
+      // 后腿刨地：每 0.28 秒一次，扬起尘土
+      const prev = this.paw; this.paw += dt / 0.28;
+      if (Math.floor(this.paw) !== Math.floor(prev)) {
+        Sound.sfx.rock(); g.shake(2);
+        g.particles.burst(this.x - f * 95, ARENA.FLOOR - 2, 10, { color: ['#8e897e', '#6e6a62', '#a89c84'], smin: 60, smax: 220, angle: f > 0 ? -2.6 : -0.5, spread: 0.6, grav: 700, lmin: 0.4, lmax: 0.8, szmin: 2, szmax: 5 });
+      }
+      if (Math.random() < 0.35) g.particles.add({ x: this.x + f * 170, y: y - 128, vx: f * rand(40, 120), vy: rand(-30, 10), life: 0.5, size: 4, grow: 16, color: 'rgba(230,230,230,0.35)', shape: 'glow' });
+    } else this.paw = 0;
+    if (st === 'aim' && Math.random() < 0.8) {
+      // 光点从四周汇聚到眼睛
+      const e = this.eye(), a = rand(0, Math.PI * 2), r = rand(50, 110);
+      g.particles.add({ x: e.x + Math.cos(a) * r, y: e.y + Math.sin(a) * r, vx: -Math.cos(a) * r * 2.4, vy: -Math.sin(a) * r * 2.4, life: 0.4, size: 2, color: pick(['#f64', '#fc8', '#f22']), shape: 'spark', add: true });
+    }
+    if (st === 'crouch') {
+      if (Math.random() < 0.6) for (const kx of [-75, 70]) g.particles.add({ x: this.x + f * (kx + (kx > 0 ? -24 : 24)), y: y - 40, vx: f * (kx > 0 ? 1 : -1) * rand(40, 140), vy: rand(-160, -60), life: 0.5, size: 5, grow: 18, color: 'rgba(235,240,240,0.4)', shape: 'glow' });
+    }
+    if (st === 'mortarWind' || (st === 'mortar' && this.shots === 0)) {
+      // 炮尾引信：火星 + 烟
+      const cx = this.x - f * 64, cy = y - 208;
+      g.particles.add({ x: cx + rand(-3, 3), y: cy, vx: rand(-80, 80), vy: rand(-160, -40), life: 0.3, size: 2, color: pick(['#ffd070', '#fa4', '#fff']), shape: 'spark', add: true, grav: 500 });
+      if (Math.random() < 0.3) g.particles.add({ x: cx, y: cy - 6, vx: rand(-10, 10), vy: rand(-60, -30), life: 0.9, size: 4, grow: 12, color: 'rgba(90,90,90,0.45)', shape: 'glow' });
     }
   }
   cannon() { return { x: this.x - this.facing * 58, y: this.y - 238 + this.crouch * 20 }; }
@@ -383,6 +430,7 @@ class Colossus {
     if (!this.active) return;
     this.hp = Math.max(0, this.hp - n); this.flash = 0.25; Sound.sfx.hit();
     if (overload) {
+      g.bossOverloads = (g.bossOverloads || 0) + 1;
       this.stopSounds(); this.beam = null; this.state = 'stunned'; this.t = 0; this.stomped = false; this.lift = 0;
       if (!this.hitOnce) { this.hitOnce = true; g.say(RADIO.bossFirstHit); }
     }
@@ -421,7 +469,7 @@ class Colossus {
       p.atkHits.add(this); Sound.sfx.block();
       g.particles.burst(ab.x + ab.w / 2, ab.y + ab.h / 2, 8, { color: ['#ffd070', '#fff'], shape: 'spark', smin: 80, smax: 220, lmin: 0.1, lmax: 0.25, add: true });
       if (p.atkDown) g.stompBounce(0.9);
-      g.toastHint('装甲太厚了——还是得靠高压展柜。瘫痪时可以砍它的头');
+      g.toastHint('装甲太厚了，刀砍不动！等它发射激光时躲到高压展柜后面，让激光打中展柜使它瘫痪，再砍头或踩头');
     }
   }
   bounce(g) {
@@ -442,14 +490,20 @@ class Colossus {
     ctx.scale(this.facing, 1);
     if (this.flash > 0 && ctx.filter !== undefined) ctx.filter = 'brightness(2.6)';
     if (this.state === 'dying') ctx.translate((Math.random() - 0.5) * 6, 0);
+    if (this.tremble > 0) ctx.translate((Math.random() - 0.5) * 5 * this.tremble, (Math.random() - 0.5) * 2 * this.tremble);
     const walking = this.state === 'charge';
     const bob = walking ? Math.sin(this.walk * 2) * 4 : Math.sin(t * 2) * 2;
     const by = bob + this.crouch * 20 + this.recoil * 6 + (this.state === 'dying' ? this.deathT * 8 : 0);
     const air = this.state === 'leap';
 
+    // 身体整体前倾 / 后仰：绕髋部中心旋转，腿的髋点跟着转，脚仍然踩在地上
+    const pvY = -85 + by, ct = Math.cos(this.tilt), sn = Math.sin(this.tilt);
+    const hip = (hx, hy) => [hx * ct - (hy - pvY) * sn, pvY + hx * sn + (hy - pvY) * ct];
+    const tiltOn = () => { ctx.save(); ctx.translate(0, pvY); ctx.rotate(this.tilt); ctx.translate(0, -pvY); };
     // 腿：远侧（暗）
-    this.drawLeg(ctx, 85, -85 + by, 0, true, air);
-    this.drawLeg(ctx, -60, -85 + by, Math.PI, true, air);
+    this.drawLeg(ctx, ...hip(85, -85 + by), 0, true, air);
+    this.drawLeg(ctx, ...hip(-60, -85 + by), Math.PI, true, air, true);
+    tiltOn();
     // 背部古董兵器
     ctx.lineCap = 'round';
     this.drawSword(ctx, -70, -196 + by, -0.5, 60);
@@ -458,7 +512,7 @@ class Colossus {
     ctx.fillStyle = '#b0b6ba'; ctx.beginPath(); ctx.moveTo(24, -278 + by); ctx.lineTo(31, -300 + by); ctx.lineTo(34, -276 + by); ctx.fill();
     ctx.fillStyle = '#7a2a22'; ctx.fillRect(22, -272 + by, 10, 6);
     // 古董炮
-    ctx.save(); ctx.translate(-58, -214 + by); ctx.rotate(-0.9 - this.recoil * 0.1);
+    ctx.save(); ctx.translate(-58, -214 + by); ctx.rotate(-0.9 - this.cannonRaise * 0.45 - this.recoil * 0.1);
     ctx.fillStyle = '#6a4a26'; ctx.fillRect(-6, -8, 50, 16); ctx.fillStyle = '#8a6a36'; ctx.fillRect(-6, -8, 50, 4);
     ctx.fillStyle = '#4a3218'; ctx.fillRect(40, -10, 6, 20); ctx.fillStyle = '#111'; ctx.fillRect(44, -5, 3, 10);
     ctx.restore();
@@ -487,7 +541,7 @@ class Colossus {
     ctx.fillStyle = '#1e1c1a'; ctx.fillRect(-40, -190 + by, 70, 80);
     ctx.globalCompositeOperation = 'lighter';
     const cg = ctx.createRadialGradient(-5, -150 + by, 2, -5, -150 + by, 38);
-    const coreCol = this.state === 'stunned' ? '120,230,255' : '255,140,50';
+    const coreCol = this.state === 'stunned' ? '120,230,255' : this.visor > 0.3 ? '255,40,40' : '255,140,50';
     cg.addColorStop(0, `rgba(${coreCol},${0.9 * pulse})`); cg.addColorStop(1, `rgba(${coreCol},0)`);
     ctx.fillStyle = cg; ctx.fillRect(-45, -195 + by, 80, 90);
     ctx.globalCompositeOperation = 'source-over';
@@ -511,24 +565,31 @@ class Colossus {
       ctx.globalCompositeOperation = 'source-over';
       if (Math.random() < 0.3) g.particles.add({ x: this.x + rand(-80, 80), y: this.y - 200, vx: rand(-20, 20), vy: rand(-80, -40), life: 1.2, size: 6, grow: 14, color: 'rgba(60,60,60,0.45)', shape: 'glow' });
     }
+    ctx.restore();
     // 腿：近侧（亮）
-    this.drawLeg(ctx, 70, -85 + by, Math.PI, false, air);
-    this.drawLeg(ctx, -75, -85 + by, 0, false, air);
+    this.drawLeg(ctx, ...hip(70, -85 + by), Math.PI, false, air);
+    this.drawLeg(ctx, ...hip(-75, -85 + by), 0, false, air, true);
+    tiltOn();
 
     // 头与颈
-    const hx = 0, hy = -this.lift * 24 + this.headDrop * 108 + by;
+    const hx = this.headLow * 10, hy = -this.lift * 24 + this.headDrop * 108 + this.headLow * 34 + by;
     ctx.strokeStyle = '#3a3733'; ctx.lineWidth = 14; ctx.beginPath(); ctx.moveTo(95, -150 + by); ctx.lineTo(118 + hx, -158 + hy); ctx.stroke();
     ctx.strokeStyle = '#5a544a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(95, -144 + by); ctx.lineTo(118, -150 + hy); ctx.stroke();
-    ctx.save(); ctx.translate(135, -160 + hy); ctx.rotate(this.headDrop * 0.35 - this.lift * 0.1);
+    ctx.save(); ctx.translate(135 + hx, -160 + hy); ctx.rotate(this.headDrop * 0.35 - this.lift * 0.1 - this.visor * 0.12 + this.headLow * 0.45);
     ctx.fillStyle = '#57534b';
     ctx.beginPath(); ctx.moveTo(-35, -32); ctx.lineTo(25, -30); ctx.lineTo(38, -2); ctx.lineTo(26, 28); ctx.lineTo(-30, 30); ctx.lineTo(-40, 0); ctx.closePath(); ctx.fill();
     ctx.strokeStyle = '#1a1917'; ctx.lineWidth = 3; ctx.stroke();
     ctx.fillStyle = '#6e6a60'; ctx.fillRect(-34, -30, 58, 6);
     // 头冠尖刺（古董刀刃）
     ctx.fillStyle = '#b0b6ba';
-    for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.moveTo(-28 + i * 14, -30); ctx.lineTo(-24 + i * 14, -46 - (i % 2) * 8); ctx.lineTo(-18 + i * 14, -30); ctx.fill(); }
+    for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.moveTo(-28 + i * 14, -30); ctx.lineTo(-24 + i * 14, -46 - (i % 2) * 8 - this.headLow * 6); ctx.lineTo(-18 + i * 14, -30); ctx.fill(); }
+    if (this.headLow > 0.5) { // 尖刺反光
+      ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = `rgba(255,250,230,${(this.headLow - 0.5) * (0.6 + 0.4 * Math.sin(t * 18))})`;
+      for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.arc(-24 + i * 14, -44 - (i % 2) * 8 - this.headLow * 6, 3, 0, 7); ctx.fill(); }
+      ctx.globalCompositeOperation = 'source-over';
+    }
     // 面罩缝
-    ctx.fillStyle = '#111'; ctx.fillRect(-26, -6, 60, 10);
+    ctx.fillStyle = '#111'; ctx.fillRect(-26, -6 - this.visor * 5, 60, 10 + this.visor * 10);
     // 下颚齿轮牙
     ctx.fillStyle = '#8a8478';
     for (let i = 0; i < 6; i++) ctx.fillRect(-22 + i * 9, 18, 5, 8 + (i % 2) * 3);
@@ -546,6 +607,7 @@ class Colossus {
       ctx.fillStyle = '#fff'; ctx.fillRect(3, -3, 3, 3);
     }
     ctx.restore();
+    ctx.restore(); // tilt
     ctx.filter = 'none';
     // 眩晕电弧
     if (this.state === 'stunned') {
@@ -562,11 +624,6 @@ class Colossus {
     ctx.restore();
 
     // 激光
-    if (this.state === 'aim') {
-      const e = this.eye(), a = this.worldAngle();
-      ctx.strokeStyle = `rgba(255,50,40,${0.3 + 0.4 * ((t * 20) % 2 < 1 ? 1 : 0)})`; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(e.x + Math.cos(a) * 1200, e.y + Math.sin(a) * 1200); ctx.stroke();
-    }
     if (this.beam) {
       const b = this.beam, w = 1 + Math.random() * 0.3;
       ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round';
@@ -584,13 +641,14 @@ class Colossus {
     ctx.fillStyle = '#8a6a36'; ctx.fillRect(-9, 0, 18, 4); ctx.fillStyle = '#4a3218'; ctx.fillRect(-2, 4, 4, 10);
     ctx.restore();
   }
-  drawLeg(ctx, hipX, hipY, off, far, air) {
+  drawLeg(ctx, hipX, hipY, off, far, air, back) {
     let fx = hipX, fy = 0;
     if (air) { fx = hipX + (hipX > 0 ? 20 : -20); fy = hipY + 80; }
     else if (this.state === 'charge') { fx = hipX + Math.sin(this.walk + off) * 30; fy = -Math.max(0, Math.cos(this.walk + off)) * 18; }
-    else fx = hipX + (hipX > 0 ? 10 : -10);
+    else if (this.state === 'windCharge' && back && !far) { const ph = this.paw % 1; fx = hipX - 10 - Math.sin(ph * Math.PI) * 34 + 20 * (1 - ph); fy = -Math.sin(ph * Math.PI) * 16; } // 后腿刨地
+    else fx = hipX + (hipX > 0 ? 10 : -10) + (hipX > 0 ? 1 : -1) * this.crouch * 16;
     const mx = (hipX + fx) / 2, my = (hipY + fy) / 2;
-    const kx = mx + (hipX > 0 ? -24 : 24), ky = my - 6;
+    const kx = mx + (hipX > 0 ? -24 : 24) * (1 + this.crouch * 0.8), ky = my - 6 - this.crouch * 6;
     const dark = far ? 0.55 : 1;
     const col = (r, g, b) => `rgb(${Math.round(r * dark)},${Math.round(g * dark)},${Math.round(b * dark)})`;
     ctx.lineCap = 'round';

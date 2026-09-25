@@ -30,11 +30,17 @@ const SLOTS = [
 const PAL_DEFAULT = { a: '#6b6848', b: '#86825a', d: '#2a2826', e: '#57553a', k: '#7c6a3e', pack: '#4a4232', stripe: '#b8952e', visor: '#7ff' };
 
 // id 规则：1xxx 能力  2xxx 涂装  3xxx 拖尾  4xxx 重构  5xxx 残刃  6xxx 展品  9xxx 掉落生成器
+// 武器（顺序 = 切换顺序）
+const WEAPON_KEYS = ['sabre', 'relicBlade', 'flintlock', 'sporeGun'];
+
 const ITEMDEFS = [
   // ---------- 能力 / 武器：账号绑定，不进入 Steam 市场 ----------
   { id: 1002, slot: 'ability', key: 'dashStrike', rarity: 'bound', name: '冲撞模块', desc: '【1-4 地下仓库】攻城机器人的冲撞驱动器，已移植进你的腿部。冲刺时撞到的普通敌人会被击碎，击碎后立即恢复冲刺。', tradable: false, marketable: false },
-  { id: 1003, slot: 'ability', key: 'sabre', rarity: 'bound', name: '仪仗军刀', desc: '【1-6 古兵器馆】19世纪的仪仗军刀。按攻击键挥砍；空中按住↓挥砍可「下劈」弹跳；可以劈开炸弹。挡不住看守者盔甲的正面盾牌。', tradable: false, marketable: false },
-  { id: 1001, slot: 'ability', key: 'relicBlade', rarity: 'bound', name: '巨像残刃', desc: '【击败巨像1号】从巨像残骸中拔出的古董长刃，替换仪仗军刀：攻击距离更长，并且可以直接劈开看守者盔甲的盾牌。', tradable: false, marketable: false },
+  { id: 1003, slot: 'ability', key: 'sabre', weapon: true, rarity: 'bound', name: '仪仗军刀', desc: '【1-6 古兵器馆】轻快的近战武器，挥砍最快。独有「弹反」：砍中炸弹、炮弹、粘液团会把它们打回去反杀敌人。空中按住↓挥砍可下劈弹跳。破不了看守者的盾牌。', tradable: false, marketable: false },
+  { id: 1004, slot: 'ability', key: 'doubleJump', rarity: 'bound', name: '推进囊', desc: '【2-1 孵化场入口】从孵化设备上拆下的生物推进囊。在空中再按一次跳跃即可二段跳；被粘液粘住时无法使用。', tradable: false, marketable: false },
+  { id: 1001, slot: 'ability', key: 'relicBlade', weapon: true, rarity: 'bound', name: '巨像残刃', desc: '【击败巨像1号】沉重的古董长刃：挥得慢，但距离长，并且能劈开看守者的盾牌。按住攻击蓄力约 0.6 秒再松开 = 重劈，在地面上还会放出一道冲击波。', tradable: false, marketable: false },
+  { id: 1005, slot: 'ability', key: 'flintlock', weapon: true, rarity: 'bound', name: '古董燧发枪', desc: '【1-8 坍塌天井】远程武器，一发一装填（约 1 秒）。按住↑朝上打，空中按住↓朝下打。开枪的后坐力会把你往后推，空中能当一次小冲刺用。可以打落吊灯、击落无人机；打不动软体怪，会被盾牌挡下。', tradable: false, marketable: false },
+  { id: 1006, slot: 'ability', key: 'sporeGun', weapon: true, rarity: 'bound', name: '生物孢子枪', desc: '【2-5 粘液走廊】育婴室的生物武器，一次喷出三颗呈扇形的孢子，弹道会下坠。孢子落地后留下一团孢子云，约 1.5 秒内碰到的敌人都会被腐蚀。适合对付成群的小怪。', tradable: false, marketable: false },
 
   // ---------- 外骨骼涂装 ----------
   { id: 2000, slot: 'paint', rarity: 'bound', def: true, name: '博物馆原漆', desc: '展台上积了二十年灰的出厂涂装。', tradable: false, marketable: false, pal: PAL_DEFAULT },
@@ -79,6 +85,7 @@ const GENERATORS = [
   { id: 9001, type: 'generator', name: '巨像残骸', desc: '击败巨像1号时的掉落', pool: ['common', 'uncommon', 'rare', 'legendary'] },
   { id: 9002, type: 'generator', name: '区域突破补给', desc: '通关普通关卡时有概率掉落', pool: ['common', 'uncommon', 'rare', 'legendary'] },
   { id: 9003, type: 'generator', name: '零重构嘉奖', desc: '一次不死通过一个关卡', pool: ['uncommon', 'rare', 'legendary'] },
+  { id: 9005, type: 'generator', name: '繁育者残骸', desc: '击败繁育者时的掉落', pool: ['common', 'uncommon', 'rare', 'legendary'] },
   { id: 9004, type: 'playtimegenerator', name: '游玩时长掉落', desc: '每累计游玩 30 分钟', pool: ['common', 'uncommon', 'rare'], dropInterval: 30 },
 ];
 const DEF_BY_ID = {};
@@ -163,7 +170,22 @@ const Inventory = {
   },
   save() { this.backend.save(this.p); },
   ability(k) { return !!this.p.abilities[k]; },
-  canAttack() { return this.ability('sabre') || this.ability('relicBlade'); },
+  // ---------- 武器：可以在已拥有的武器之间切换 ----------
+  owned() { return WEAPON_KEYS.filter((k) => this.ability(k)); },
+  canAttack() { return this.owned().length > 0; },
+  weapon() {
+    if (this.preview && this.preview.weapon) return this.preview.weapon;
+    const own = this.owned(); if (!own.length) return null;
+    if (own.includes(this.p.weapon)) return this.p.weapon;
+    return own.includes('relicBlade') ? 'relicBlade' : own[0]; // 旧存档：默认拿最强的近战武器
+  },
+  setWeapon(k) { if (!this.ability(k)) return false; this.p.weapon = k; this.save(); return true; },
+  cycleWeapon(dir) {
+    const own = this.owned(); if (own.length < 2) return null;
+    const i = own.indexOf(this.weapon());
+    this.p.weapon = own[(i + (dir || 1) + own.length) % own.length]; this.save();
+    return this.p.weapon;
+  },
   unlockAbility(k) { this.p.abilities[k] = true; this.save(); },
   count(id) { const d = DEF_BY_ID[id]; if (d && d.def) return 1; if (d && d.slot === 'ability') return this.ability(d.key) ? 1 : 0; return this.p.items.filter((i) => i.def === id).length; },
   owns(id) { return this.count(id) > 0; },

@@ -26,14 +26,15 @@ const Game = {
     const toGame = (e) => { const r = this.canvas.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * VW, y: (e.clientY - r.top) / r.height * VH }; };
     const hitHot = (p) => { for (let i = this.hot.length - 1; i >= 0; i--) { const h = this.hot[i]; if (p.x >= h.x && p.x <= h.x + h.w && p.y >= h.y && p.y <= h.y + h.h) return h; } return null; };
     this.canvas.addEventListener('pointermove', (e) => {
-      const h = hitHot(toGame(e));
+      const pt = toGame(e), h = hitHot(pt);
       this.canvas.style.cursor = h ? 'pointer' : 'default';
-      if (h && h.hover && e.pointerType === 'mouse') h.hover();
+      if (h && h.hover && e.pointerType === 'mouse') h.hover(pt);
+      if (h && h.drag && (e.buttons & 1)) h.drag(pt); // 拖动滑块
     });
     this.canvas.addEventListener('pointerdown', (e) => {
       Sound.init();
-      const h = hitHot(toGame(e));
-      if (h) { if (h.hover) h.hover(); h.click(); return; }
+      const pt = toGame(e), h = hitHot(pt);
+      if (h) { if (h.hover) h.hover(pt); h.click(pt); return; }
       if (['story', 'end'].includes(this.state)) Input.setVirt('confirm', true);
     });
     this.canvas.addEventListener('pointerup', () => Input.setVirt('confirm', false));
@@ -90,21 +91,29 @@ const Game = {
     if (cont) m.push({ label: `继续游戏 · ${LEVELS[s.level].id} ${LEVELS[s.level].name}`, act: 'continue', lv: s.level });
     m.push({ label: cont ? '新的游戏' : '开始游戏', act: 'new' });
     if (Inventory.p.ch1Clear) m.push({ label: '章节选择', act: 'select' });
+    this.titleCh = cont ? chapterOf(LEVELS[s.level]) : 1;
     m.push({ label: '仓库 · 武器与外观', act: 'inv' });
     m.push({ label: '按键设置', act: 'keys' });
+    m.push({ label: '声音设置', act: 'audio' });
     this.menu = m; this.menuSel = Math.min(this.menuSel, m.length - 1);
   },
   newGame() {
     this.deaths = 0; this.chips = new Set(); this.runTime = 0; Save.clear();
+    this.playStory(1);
+  },
+  // 播放某章开场剧情，结束后进入该章第一关
+  playStory(ch) {
+    this.storyCh = ch; this.storyLines = CHAPTERS[ch].story;
     this.state = 'story'; this.stateT = 0; this.storyIdx = 0; this.storyT = 0; Sound.music('radio');
   },
+  get chapter() { return this.level ? chapterOf(this.level) : 1; },
 
   startLevel(i, short) {
     this.levelIndex = i;
     const def = LEVELS[i]; this.level = def;
     const B = makeBuilder(def.w, def.h); def.build(B);
     const grid = B.grid.map((r) => r.slice());
-    this.enemySpawns = []; this.props = []; this.crumbles = []; this.movers = []; this.projectiles = []; this.bolts = [];
+    this.enemySpawns = []; this.props = []; this.crumbles = []; this.movers = []; this.projectiles = []; this.bolts = []; this.pshots = [];
     const occ = new Set(); let spawn = { cx: 3, cy: 3 }, crumbleGroup = 0, laserIdx = 0, chipIdx = 0;
     const lateProps = [];
     for (let y = 0; y < def.h; y++) {
@@ -121,23 +130,25 @@ const Game = {
           case 'o': { const id = def.id + '#' + chipIdx++; if (!this.chips.has(id)) lateProps.push(() => new Chip(x, y, id)); break; }
           case 'L': { const idx = laserIdx++; lateProps.push(() => new LaserGate(x, y, idx, this.world)); break; }
           case 'H': case 'V': this.movers.push({ x, y, c }); break;
-          case 'A': case 'B': { const key = c === 'A' ? 'dashStrike' : 'sabre'; if (!Inventory.ability(key)) lateProps.push(() => new AbilityPickup(x * TILE + 16, (y + 1) * TILE, key)); break; }
-          default: this.enemySpawns.push({ id: def.id + ':' + x + ',' + y, type: c, cx: x, cy: y });
+          case 'A': case 'B': case 'D': case 'F': case 'Z': { const key = { A: 'dashStrike', B: 'sabre', D: 'doubleJump', F: 'flintlock', Z: 'sporeGun' }[c]; if (!Inventory.ability(key)) lateProps.push(() => new AbilityPickup(x * TILE + 16, (y + 1) * TILE, key)); break; }
+          default:
+            if (PROP_FACTORIES[c]) { const f = PROP_FACTORIES[c]; lateProps.push(() => f(x, y, this)); break; }
+            this.enemySpawns.push({ id: def.id + ':' + x + ',' + y, type: c, cx: x, cy: y });
         }
       }
     }
-    this.world = new World(grid);
+    this.world = new World(grid, B.water);
     this.crumbles = this.crumbles.map((c) => { const o = new Crumble(c.x, c.y, c.g); this.world.solids.push(o.solid); return o; });
     this.movers = this.movers.map((m) => { const o = new Mover(m.x, m.y, m.c); this.world.solids.push(o.solid); return o; });
-    this.props = lateProps.map((f) => f());
-    this.tileCanvas = renderTiles(this.world, occ);
+    this.props = lateProps.map((f) => f()).filter(Boolean);
+    this.tileCanvas = renderTiles(this.world, occ, def.theme.tiles);
     this.permDead = new Set();
     this.checkpoint = { x: spawn.cx * TILE + 6, y: (spawn.cy + 1) * TILE - 28 };
     this.player = new Player(this.checkpoint.x, this.checkpoint.y);
     this.player.spawnT = 0.45;
     this.radioTriggers = def.radio.map((r) => Object.assign({ fired: false }, r));
     this.radio.queue = []; this.radio.cur = null;
-    this.levelT = 0; this.cardT = 0; this.bossDoneT = -1; this.alarmSrc = null; this.levelDeaths0 = this.deaths; this.pickup = null;
+    this.levelT = 0; this.cardT = 0; this.bossDoneT = -1; this.bossOverloads = 0; this.alarmSrc = null; this.levelDeaths0 = this.deaths; this.pickup = null;
     if (this.boss) this.boss.stopSounds();
     this.boss = null; this.exhibit = null;
     if (def.boss) this.setupBoss(!!short);
@@ -150,6 +161,8 @@ const Game = {
   setupBoss(short) {
     if (this.exhibit) this.world.solids = this.world.solids.filter((s) => s !== this.exhibit.solid);
     if (this.boss) this.boss.stopSounds();
+    if (this.boss && this.boss.mobs) this.enemies = this.enemies.filter((e) => !this.boss.mobs.includes(e));
+    if (this.level.boss === 'incubator') { this.exhibit = null; this.boss = new Incubator(this, short); return; }
     this.exhibit = new ExhibitCase(this);
     this.boss = new Colossus(this, short);
   },
@@ -168,8 +181,8 @@ const Game = {
   collectChip(c) {
     this.chips.add(c.id); Sound.sfx.pickup();
     this.particles.burst(c.x + 8, c.y + 8, 18, { color: ['#fc6', '#fff', '#fa4'], smin: 40, smax: 180, lmin: 0.3, lmax: 0.7, add: true });
-    const n = this.chips.size;
-    this.toast(`记忆芯片 ${n} / ${CHIP_TOTAL}`, LORE[(n - 1) % LORE.length]);
+    const ch = this.chapter, n = chipsIn(this.chips, ch), lore = CHAPTERS[ch].lore;
+    this.toast(`记忆芯片 ${n} / ${chipTotal(ch)}`, lore[(n - 1) % lore.length]);
     this.persist();
   },
   killEnemy(e) {
@@ -179,7 +192,7 @@ const Game = {
   },
   stompBounce(mul) {
     const p = this.player, m = mul || 1;
-    p.vy = (Input.down('jump') ? -700 : -470) * m; p.jumping = Input.down('jump'); p.canDash = true; p.dashT = 0;
+    p.vy = (Input.down('jump') ? -700 : -470) * m; p.jumping = Input.down('jump'); p.canDash = true; p.dashT = 0; p.jumpsLeft = 1;
     p.sx = 0.8; p.sy = 1.25;
   },
   explosion(x, y, r) {
@@ -201,7 +214,7 @@ const Game = {
   },
   respawn() {
     for (const c of this.crumbles) c.reset();
-    this.projectiles = []; this.bolts = [];
+    this.projectiles = []; this.bolts = []; this.pshots = [];
     this.spawnEnemies();
     if (this.level.boss && this.boss && this.boss.active) this.setupBoss(true);
     this.player.reset(this.checkpoint.x, this.checkpoint.y);
@@ -218,22 +231,40 @@ const Game = {
     Save.save({ level: this.levelIndex, deaths: this.deaths, chips: [...this.chips], time: this.runTime });
   },
   onBossDefeated() {
-    this.bossDoneT = 0; this.say(RADIO.bossDefeat); Sound.music('ending');
-    Inventory.p.ch1Clear = true; Inventory.save();
-    setTimeout(() => Inventory.drop(9001), 1200);
+    const ch = this.chapter;
+    this.bossDoneT = 0; Sound.music('ending');
+    Inventory.p['ch' + ch + 'Clear'] = true; Inventory.save();
     if (this.deaths === this.levelDeaths0) setTimeout(() => Inventory.drop(9003), 2400);
+    if (ch === 2) {
+      this.say(RADIO.incDefeat);
+      setTimeout(() => Inventory.drop(9005), 1200);
+      return;
+    }
+    this.say(RADIO.bossDefeat);
+    setTimeout(() => Inventory.drop(9001), 1200);
     if (!Inventory.ability('relicBlade')) this.pickup = new AbilityPickup(clamp(this.boss.x, 120, 840), ARENA.FLOOR, 'relicBlade');
+  },
+  // 进入 / 离开高密度培养液
+  onSplash(p, entering) {
+    Sound.sfx.splash();
+    const y = Math.round((p.y + (entering ? p.h : 0)) / TILE) * TILE;
+    this.particles.burst(p.cx, y, entering ? 14 : 8, { color: ['#7ff', '#bff', '#5ad'], smin: 40, smax: 200, grav: 700, vy: -180, lmin: 0.3, lmax: 0.6, szmin: 2, szmax: 4 });
+    if (entering && !this.waterHinted) { this.waterHinted = true; this.toastHint(Input.fmt('培养液中重力很低：可以连续按 {jump} 上浮，但很难刹车')); }
   },
   pickupAbility(key) {
     Inventory.unlockAbility(key);
     if (key === 'relicBlade') { Inventory.unlockAbility('dashStrike'); Inventory.unlockAbility('sabre'); }
+    if (WEAPON_KEYS.includes(key)) Inventory.setWeapon(key); // 新武器拿到手就装备上
     Sound.sfx.unlock(); this.flash(0.8, '#ffe8b0'); this.shake(8); this.freeze(0.15);
     this.particles.burst(this.player.cx, this.player.cy, 40, { color: ['#fc6', '#fff', '#fa4'], smin: 80, smax: 360, lmin: 0.5, lmax: 1.2, add: true });
     Input.rumble(1, 1, 500);
     const T = {
       dashStrike: ['获得能力 · 冲撞模块', '{dash} 冲刺撞到的普通敌人会被击碎，并立即恢复冲刺（看守者的盾牌除外）。账号绑定，不可交易。', RADIO.dashGet],
       sabre: ['获得武器 · 仪仗军刀', '{attack} 挥砍；空中按住 ↓ 再挥砍可下劈弹跳；可以劈开炸弹。账号绑定，不可交易。', RADIO.sabreGet],
-      relicBlade: ['武器升级 · 巨像残刃', '替换仪仗军刀：攻击距离更长，并可劈开看守者的盾牌。账号绑定，不可交易。', RADIO.bladeGet],
+      flintlock: ['获得武器 · 古董燧发枪', '远程武器：{attack} 开枪，一发一装填。按住 ↑ 朝上打，空中按住 ↓ 朝下打。后坐力会把你往后推。{swap} 切换武器。账号绑定，不可交易。', RADIO.gunGet],
+      sporeGun: ['获得武器 · 生物孢子枪', '一次喷出三颗扇形孢子，落地留下孢子云腐蚀敌人，无视盾牌。{swap} 切换武器。账号绑定，不可交易。', RADIO.sporeGet],
+      doubleJump: ['获得能力 · 推进囊', '空中再按 {jump} 二段跳；被粘液粘住时无法使用。账号绑定，不可交易。', RADIO.djGet],
+      relicBlade: ['获得武器 · 巨像残刃', '挥得慢但距离长，能劈开看守者的盾牌；按住 {attack} 蓄力再松开 = 重劈，地面上还会放出冲击波。{swap} 可以切回仪仗军刀。账号绑定，不可交易。', RADIO.bladeGet],
     }[key];
     this.toast(T[0], Input.fmt(T[1]));
     this.say(T[2]);
@@ -246,17 +277,19 @@ const Game = {
     this.toasts.push({ title: `掉落 · ${r.name} · ${d.name}`, text: `${SLOTS.find((x) => x.key === d.slot).name} · 来自「${src}」 · 可交易 · 可上架 Steam 市场`, t: 0, color: r.color, drop: true });
   },
   // 武器 / 冲撞 命中处理：返回 'kill' | 'block' | 'cut'
-  strike(e, kind) {
+  // kind：blade 挥砍 | heavy 重劈/冲击波 | dash 冲撞 | shot 子弹/弹反 | spore 孢子；src = 攻击来源位置（远程攻击用）
+  strike(e, kind, src) {
     const p = this.player;
+    if (e.onStrike) return e.onStrike(this, kind);
     if (e instanceof Chandelier) {
       if (e.state === 'fall') { e.shatter(this); return 'kill'; }
-      if (kind === 'blade') { e.state = 'fall'; e.t = 0; Sound.sfx.clang(); return 'cut'; }
+      if (kind !== 'dash') { e.state = 'fall'; e.t = 0; Sound.sfx.clang(); return 'cut'; }
       return 'none';
     }
-    if (e.guard && e.guard(p, kind)) {
+    if (e.guard && e.guard(src || p, kind)) {
       Sound.sfx.block(); this.shake(3);
       this.particles.burst(e.x + e.w / 2, e.y + e.h / 3, 10, { color: ['#ffd070', '#fff'], shape: 'spark', smin: 100, smax: 280, lmin: 0.15, lmax: 0.3, add: true });
-      this.toastHint(kind === 'dash' ? '冲撞被盾牌挡下了——从背后或趁它晕眩时攻击' : '盾牌挡住了残刃——绕到背后，或引它撞墙');
+      this.toastHint(kind === 'dash' ? '冲撞被盾牌挡下了——从背后或趁它晕眩时攻击' : kind === 'shot' ? '子弹被盾牌挡下了——从背后打，或者换巨像残刃 / 孢子枪' : '盾牌挡住了军刀——绕到背后，或者换巨像残刃破盾');
       return 'block';
     }
     Sound.sfx.slashHit(); this.killEnemy(e); return 'kill';
@@ -274,6 +307,7 @@ const Game = {
       case 'paused': return this.updatePause(dt);
       case 'inv': return this.updateInventory(dt);
       case 'keys': return this.updateKeys(dt);
+      case 'audio': return this.updateAudio(dt);
       case 'select': return this.updateSelect(dt);
       default: return this.updatePlay(dt);
     }
@@ -281,25 +315,31 @@ const Game = {
   updateTitle() {
     if (Input.hit('mu')) { this.menuSel = (this.menuSel + this.menu.length - 1) % this.menu.length; Sound.sfx.select(); }
     if (Input.hit('md')) { this.menuSel = (this.menuSel + 1) % this.menu.length; Sound.sfx.select(); }
-    for (let i = 0; i < LEVELS.length; i++) if (Input.code('Digit' + ((i + 1) % 10))) { Sound.init(); Sound.sfx.confirm(); this.startLevel(i); return; }
+    // 测试用：数字键 1~0 跳到第一章，Shift + 数字跳到第二章
+    const shift = !!(Input.raw.ShiftLeft || Input.raw.ShiftRight);
+    for (let i = 0; i < 10; i++) if (Input.code('Digit' + ((i + 1) % 10))) {
+      const j = i + (shift ? 10 : 0); if (j >= LEVELS.length) return;
+      Sound.init(); Sound.sfx.confirm(); this.startLevel(j); return;
+    }
     if (Input.hit('confirm') && this.stateT > 0.3) this.activateTitle();
   },
   activateTitle() {
     Sound.init(); Sound.sfx.confirm();
     const m = this.menu[this.menuSel];
     if (m.act === 'continue') this.startLevel(m.lv);
-    else if (m.act === 'select') { this.state = 'select'; this.selSel = 0; }
+    else if (m.act === 'select') { this.state = 'select'; this.selSel = 0; this.selCh = this.titleCh || 1; }
     else if (m.act === 'inv') this.openInventory('title');
     else if (m.act === 'keys') this.openKeys('title');
+    else if (m.act === 'audio') this.openAudio('title');
     else this.newGame();
   },
   // 登记一个可点击区域（本帧有效）
-  addHot(x, y, w, h, click, hover) { this.hot.push({ x, y, w, h, click, hover }); },
+  addHot(x, y, w, h, click, hover, drag) { this.hot.push({ x, y, w, h, click, hover, drag }); },
   updateStory(dt) {
     this.storyT += dt;
-    const line = STORY[this.storyIdx] || '';
+    const line = this.storyLines[this.storyIdx] || '';
     const full = this.storyT * 22 >= line.length;
-    if (Input.hit('skip') || Input.hit('pause') || Input.hit('back')) { Sound.sfx.radioOn(); this.startLevel(0); return; }
+    if (Input.hit('skip') || Input.hit('pause') || Input.hit('back')) { Sound.sfx.radioOn(); this.startLevel(chapterStart(this.storyCh)); return; }
     if (Input.hit('confirm')) {
       if (!full) this.storyT = line.length / 22 + 0.01;
       else this.advanceStory();
@@ -308,13 +348,24 @@ const Game = {
   },
   advanceStory() {
     this.storyIdx++; this.storyT = 0;
-    if (this.storyIdx >= STORY.length) { Sound.sfx.radioOn(); this.startLevel(0); }
+    if (this.storyIdx >= this.storyLines.length) { Sound.sfx.radioOn(); this.startLevel(chapterStart(this.storyCh)); }
   },
   updateEnd() {
-    if (Input.hit('confirm') && this.stateT > 2) { Sound.sfx.confirm(); Save.save({ level: 0, deaths: 0, chips: [], time: 0 }); Save.clear(); this.toTitle(); }
+    if (Input.hit('confirm') && this.stateT > 2) this.leaveEnd();
+  },
+  // 章节结算之后：有下一章就接着播下一章剧情，否则回到标题
+  leaveEnd() {
+    Sound.sfx.confirm();
+    const next = this.endCh + 1;
+    if (CHAPTERS[next] && chapterStart(next) >= 0) {
+      Save.save({ level: chapterStart(next), deaths: this.deaths, chips: [...this.chips], time: this.runTime });
+      this.playStory(next);
+      return;
+    }
+    Save.save({ level: 0, deaths: 0, chips: [], time: 0 }); Save.clear(); this.toTitle();
   },
   updatePause() {
-    const opts = 6;
+    const opts = 7;
     if (Input.hit('mu')) { this.pauseSel = (this.pauseSel + opts - 1) % opts; Sound.sfx.select(); }
     if (Input.hit('md')) { this.pauseSel = (this.pauseSel + 1) % opts; Sound.sfx.select(); }
     if (Input.hit('pause') || Input.hit('back')) { this.state = 'play'; return; }
@@ -326,8 +377,9 @@ const Game = {
       if (this.pauseSel === 0) this.state = 'play';
       else if (this.pauseSel === 1) this.openInventory('paused');
       else if (this.pauseSel === 2) this.openKeys('paused');
-      else if (this.pauseSel === 3) Input.setRumble(!Input.rumbleOn);
-      else if (this.pauseSel === 4) this.startLevel(this.levelIndex, true);
+      else if (this.pauseSel === 3) this.openAudio('paused');
+      else if (this.pauseSel === 4) Input.setRumble(!Input.rumbleOn);
+      else if (this.pauseSel === 5) this.startLevel(this.levelIndex, true);
       else { if (this.boss) this.boss.stopSounds(); this.toTitle(); }
     }
   },
@@ -341,6 +393,7 @@ const Game = {
     this.flashA = Math.max(0, this.flashA - dt * 2.5);
     this.alarmFlash = Math.max(0, this.alarmFlash - dt);
     this.hudDeny = Math.max(0, this.hudDeny - dt);
+    this.hudSlime = Math.max(0, (this.hudSlime || 0) - dt);
     this.cardT += dt;
     if (this.freezeT > 0) { this.freezeT -= dt; return; }
     this.levelT += dt;
@@ -357,6 +410,7 @@ const Game = {
     if (this.pickup) this.pickup.update(dt, this);
     for (const pr of this.projectiles) pr.update(dt, this);
     this.projectiles = this.projectiles.filter((pr) => !pr.dead);
+    this.updatePShots(dt);
     for (const b of this.bolts) b.t += dt;
     this.bolts = this.bolts.filter((b) => b.t < b.life);
 
@@ -367,9 +421,10 @@ const Game = {
         // 残刃挥砍
         if (ab && !p.atkHits.has(e) && overlap(ab, e)) {
           p.atkHits.add(e);
-          const r = this.strike(e, 'blade');
+          const r = this.strike(e, p.atkHeavy ? 'heavy' : 'blade');
           if (p.atkDown && (r === 'kill' || r === 'block' || r === 'cut')) this.stompBounce(0.9);
           else if (r === 'block') p.vx = -p.facing * 280;
+          if (r === 'bounced') continue;
           if (!e.alive) continue;
         }
         if (overlap(p, e)) {
@@ -378,12 +433,19 @@ const Game = {
             const r = this.strike(e, 'dash');
             if (r === 'kill') { p.canDash = true; this.freeze(0.05); continue; }
             if (r === 'block') { p.dashT = 0; p.vx = -p.dashDir.x * 340; p.vy = -320; continue; }
+            if (r === 'bounced') continue;
           }
           if (overlap(p.hurt(), e) || stompable(p, e, 12)) e.touch(p, this);
         }
       }
       if (ab) {
-        for (const pr of this.projectiles) if (pr.defuse && !pr.dead && Math.hypot(pr.x - (ab.x + ab.w / 2), pr.y - (ab.y + ab.h / 2)) < 34) { pr.defuse(this); if (p.atkDown) this.stompBounce(0.8); }
+        const sabre = Inventory.weapon() === 'sabre';
+        for (const pr of this.projectiles) {
+          if (pr.dead || !(pr.defuse || (typeof SlimeBlob !== 'undefined' && pr instanceof SlimeBlob))) continue;
+          if (Math.hypot(pr.x - (ab.x + ab.w / 2), pr.y - (ab.y + ab.h / 2)) >= 34 + (sabre ? 8 : 0)) continue;
+          if (sabre) this.parry(pr, p); else if (pr.defuse) pr.defuse(this); else continue; // 军刀：弹反；残刃：直接劈掉
+          if (p.atkDown) this.stompBounce(0.8);
+        }
         if (this.boss && !p.atkHits.has(this.boss)) this.boss.slashed(this, ab);
       }
       this.checkHazards();
@@ -407,7 +469,9 @@ const Game = {
     if (this.bossDoneT >= 0) {
       this.bossDoneT += dt;
       if (this.bossDoneT > 3 && !this.radio.cur && !this.radio.queue.length && this.state === 'play' && (!this.pickup || this.pickup.got)) {
-        this.state = 'end'; this.stateT = 0; this.endT = 0; Save.save({ level: 0, deaths: this.deaths, chips: [...this.chips], time: this.runTime });
+        this.state = 'end'; this.stateT = 0; this.endT = 0; this.endCh = this.chapter;
+        const next = chapterStart(this.endCh + 1);
+        Save.save({ level: next > 0 ? next : 0, deaths: this.deaths, chips: [...this.chips], time: this.runTime });
       }
     }
   },
@@ -468,6 +532,7 @@ const Game = {
       case 'end': return this.renderEnd(ctx);
       case 'inv': return this.renderInventory(ctx);
       case 'keys': return this.renderKeys(ctx);
+      case 'audio': return this.renderAudio(ctx);
       case 'select': return this.renderSelect(ctx);
       default: this.renderPlay(ctx);
     }
@@ -488,11 +553,15 @@ const Game = {
     for (const cr of this.crumbles) if (vis(cr)) cr.draw(ctx, this);
     if (this.exhibit) this.exhibit.draw(ctx, this);
     if (this.boss) this.boss.draw(ctx, this);
+    this.drawBossGuide(ctx);
     if (this.pickup) this.pickup.draw(ctx, this);
     for (const e of this.enemies) if (e.alive && vis(e, 200)) e.draw(ctx, this);
     if (this.state !== 'dead' && !this.player.dead) this.player.draw(ctx, this);
+    if (this.world.water) drawWater(ctx, this.world, view, this.t);
     this.drawAlarmLink(ctx);
     for (const pr of this.projectiles) pr.draw(ctx, this);
+    this.drawPShots(ctx);
+    this.drawWeaponPop(ctx);
     this.drawBolts(ctx);
     this.particles.draw(ctx, view);
     ctx.restore();
@@ -516,6 +585,22 @@ const Game = {
     if (this.state === 'clear') this.drawClear(ctx);
     if (this.state === 'paused') this.drawPause(ctx);
     this.drawToasts(ctx);
+  },
+  // 巨像1号的打法引导：瞄准时画出激光预警线；展柜充能好时在它头上提示「躲到后面」
+  drawBossGuide(ctx) {
+    const b = this.boss, cs = this.exhibit;
+    if (!(b instanceof Colossus) || !b.active || b.state === 'intro' || !cs || this.state !== 'play') return;
+    if (b.state === 'aim') { // 激光预警线
+      const e = b.eye(), a = b.worldAngle(), k = Math.min(1, b.t * 2);
+      ctx.strokeStyle = `rgba(255,60,40,${0.25 + 0.35 * k})`; ctx.lineWidth = 1.5; ctx.setLineDash([8, 6]);
+      ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(e.x + Math.cos(a) * 1400, e.y + Math.sin(a) * 1400); ctx.stroke(); ctx.setLineDash([]);
+    }
+    // 展柜充能时的一个小标记（没有文字）：金色箭头，提示它可以用来反击
+    const need = (this.bossOverloads || 0) < 2 || this.deaths - this.levelDeaths0 >= 3;
+    if (!need || !cs.blocks()) return;
+    const x = cs.x + cs.w / 2, y = cs.y - 34 - Math.abs(Math.sin(this.t * 4)) * 6;
+    ctx.fillStyle = 'rgba(255,220,120,0.75)';
+    ctx.beginPath(); ctx.moveTo(x - 8, y - 10); ctx.lineTo(x + 8, y - 10); ctx.lineTo(x, y); ctx.fill();
   },
   // 冲刺被警报锁定时：从无人机到玩家的红色扫描线 + 玩家头顶的倒计时
   drawAlarmLink(ctx) {
@@ -572,29 +657,52 @@ const Game = {
     else if (!p.canDash) { col = '#666'; label = 'USED'; }
     ctx.fillStyle = col; ctx.fillRect(dx + 10, 34, 98 * (p.dashLock > 0 ? p.dashLock / 2 : 1), 6);
     ctx.font = 'bold 10px ' + MONO; ctx.fillText(label, dx + 48, 28);
-    if (Inventory.canAttack()) {
-      ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(dx + 124, 12, 64, 44);
-      ctx.font = '10px ' + MONO; ctx.fillStyle = 'rgba(200,200,200,0.7)'; ctx.fillText('BLADE', dx + 134, 28);
-      ctx.fillStyle = p.atkCd > 0 ? '#666' : Inventory.equipped('blade').edge; ctx.fillRect(dx + 134, 34, 44 * (p.atkCd > 0 ? 1 - p.atkCd / (p.atkCdMax || 0.17) : 1), 6);
+    const wk = Inventory.weapon();
+    if (wk) {
+      // 当前武器：小图标 + 名字 + 冷却条（点击可切换）
+      const wx = dx + 124, ww = 118, info = WEAPON_INFO[wk], many = Inventory.owned().length > 1;
+      ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(wx, 12, ww, 44);
+      ctx.save(); ctx.beginPath(); ctx.rect(wx, 12, 44, 44); ctx.clip();
+      ItemArt.icon(ctx, wk, wx + 22, 32, 0.2, this.t);
+      ctx.restore();
+      ctx.font = '10px ' + MONO; ctx.fillStyle = 'rgba(200,200,200,0.7)'; ctx.fillText(info.en, wx + 46, 27);
+      if (many) { ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(255,210,120,0.8)'; ctx.fillText(Input.glyph('swap'), wx + ww - 6, 27); ctx.textAlign = 'left'; }
+      const col = wk === 'flintlock' ? '#ffd070' : wk === 'sporeGun' ? '#9fe8c0' : Inventory.equipped('blade').edge;
+      const k = p.atkCd > 0 ? 1 - p.atkCd / (p.atkCdMax || 0.17) : 1;
+      ctx.fillStyle = 'rgba(255,255,255,0.1)'; ctx.fillRect(wx + 46, 34, 62, 6);
+      ctx.fillStyle = p.atkCd > 0 ? '#777' : col; ctx.fillRect(wx + 46, 34, 62 * k, 6);
+      if (p.chargeT >= (WPN[wk].charge || 99)) { ctx.fillStyle = (this.t * 10) % 2 < 1 ? '#ffd070' : '#fff'; ctx.fillRect(wx + 46, 43, 62, 3); }
+      else if (WPN[wk].charge && p.chargeT > 0) { ctx.fillStyle = 'rgba(255,210,120,0.7)'; ctx.fillRect(wx + 46, 43, 62 * p.chargeT / WPN[wk].charge, 3); }
+      if (many) this.addHot(wx, 12, ww, 44, () => { if (this.state === 'play') this.swapWeapon(); });
+    }
+    // 二段跳 / 粘液
+    if (Inventory.ability('doubleJump')) {
+      const jx = dx + (Inventory.canAttack() ? 250 : 124);
+      ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(jx, 12, 64, 44);
+      ctx.font = '10px ' + MONO; ctx.fillStyle = 'rgba(200,200,200,0.7)'; ctx.fillText(p.slimeT > 0 ? '' : p.inWater ? 'SWIM' : 'JUMP+', jx + 10, 28);
+      if (p.slimeT > 0) { ctx.fillStyle = '#7c4'; ctx.fillRect(jx + 10, 34, 44 * (p.slimeT / PL.SLIME_T), 6); ctx.font = 'bold 10px ' + MONO; ctx.fillText('SLIME', jx + 10, 28); }
+      else { ctx.fillStyle = p.jumpsLeft > 0 || p.onGround ? '#7ef' : '#555'; ctx.fillRect(jx + 10, 34, 44, 6); }
+      if (this.hudSlime > 0) { ctx.strokeStyle = `rgba(140,220,60,${this.hudSlime})`; ctx.lineWidth = 2; ctx.strokeRect(jx, 12, 64, 44); }
     }
     if (this.hudDeny > 0) { ctx.strokeStyle = `rgba(255,50,50,${this.hudDeny})`; ctx.lineWidth = 2; ctx.strokeRect(dx, 12, 118, 44); }
     // 右上：重构次数 / 芯片
     ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(VW - 222, 12, 210, 44);
     ctx.font = '11px ' + FONT; ctx.fillStyle = 'rgba(200,220,220,0.7)'; ctx.fillText('重构次数', VW - 210, 29); ctx.fillText('记忆芯片', VW - 100, 29);
     ctx.font = 'bold 16px ' + MONO; ctx.fillStyle = '#7ff'; ctx.fillText(String(this.deaths), VW - 210, 49);
-    ctx.fillStyle = '#fc6'; ctx.fillText(`${this.chips.size}/${CHIP_TOTAL}`, VW - 100, 49);
+    ctx.fillStyle = '#fc6'; ctx.fillText(`${chipsIn(this.chips, this.chapter)}/${chipTotal(this.chapter)}`, VW - 100, 49);
     // Boss 血条
     const b = this.boss;
     if (b && !(b.state === 'intro') && !b.dead) {
       const w = 440, x = VW / 2 - w / 2, y = VH - 34;
       ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(x - 6, y - 22, w + 12, 38);
       ctx.fillStyle = '#e8c8a0'; ctx.font = 'bold 12px ' + FONT; ctx.textAlign = 'center';
-      ctx.fillText('博物馆守卫 · 巨像1号  THE COLOSSUS', VW / 2, y - 7); ctx.textAlign = 'left';
+      ctx.fillText(b.title || '博物馆守卫 · 巨像1号  THE COLOSSUS', VW / 2, y - 7); ctx.textAlign = 'left';
+      if (b.waveInfo) { ctx.textAlign = 'right'; ctx.fillStyle = b.state === 'exposed' ? '#f8c' : '#9ce'; ctx.font = 'bold 11px ' + FONT; ctx.fillText(b.waveInfo, x + w, y - 7); ctx.textAlign = 'left'; }
       ctx.fillStyle = '#2a1414'; ctx.fillRect(x, y, w, 10);
       const k = b.hp / b.maxHp;
       ctx.fillStyle = b.flash > 0 ? '#fff' : '#c33'; ctx.fillRect(x, y, w * k, 10);
-      ctx.fillStyle = 'rgba(0,0,0,0.6)'; for (let i = 1; i < b.maxHp; i++) ctx.fillRect(x + (w / b.maxHp) * i, y, 1, 10);
-      ctx.fillStyle = '#fc6'; ctx.fillRect(x + w * (8 / 12), y - 3, 2, 16); ctx.fillRect(x + w * (4 / 12), y - 3, 2, 16);
+      if (b.maxHp <= 20) { ctx.fillStyle = 'rgba(0,0,0,0.6)'; for (let i = 1; i < b.maxHp; i++) ctx.fillRect(x + (w / b.maxHp) * i, y, 1, 10); }
+      ctx.fillStyle = '#fc6'; for (const mk of b.marks || [8 / 12, 4 / 12]) ctx.fillRect(x + w * mk, y - 3, 2, 16);
     }
   },
   drawRadio(ctx) {
@@ -658,7 +766,7 @@ const Game = {
     const y = VH * 0.44;
     ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, y - 50, VW, 100);
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#c9b88a'; ctx.font = 'bold 14px ' + MONO; ctx.fillText(`CHAPTER 1 · THE SILENT MUSEUM · ${this.level.id}`, VW / 2, y - 18);
+    ctx.fillStyle = '#c9b88a'; ctx.font = 'bold 14px ' + MONO; ctx.fillText(`CHAPTER ${this.chapter} · ${CHAPTERS[this.chapter].en} · ${this.level.id}`, VW / 2, y - 18);
     ctx.fillStyle = '#f2ead6'; ctx.font = 'bold 34px ' + FONT; ctx.fillText(this.level.name, VW / 2, y + 22);
     ctx.fillStyle = 'rgba(200,190,160,0.7)'; ctx.font = '12px ' + MONO; ctx.fillText(this.level.en, VW / 2, y + 40);
     ctx.textAlign = 'left'; ctx.globalAlpha = 1;
@@ -700,7 +808,7 @@ const Game = {
     ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0, 0, VW, VH);
     ctx.textAlign = 'center';
     ctx.fillStyle = '#f2ead6'; ctx.font = 'bold 32px ' + FONT; ctx.fillText('暂 停', VW / 2, VH / 2 - 110);
-    ['继续游戏', '仓库 · 武器与外观', '按键设置', `手柄震动：${Input.rumbleOn ? '开' : '关'}`, '重新开始本关', '返回标题'].forEach((s, i) => {
+    ['继续游戏', '仓库 · 武器与外观', '按键设置', '声音设置', `手柄震动：${Input.rumbleOn ? '开' : '关'}`, '重新开始本关', '返回标题'].forEach((s, i) => {
       ctx.fillStyle = i === this.pauseSel ? '#7ff' : '#888'; ctx.font = (i === this.pauseSel ? 'bold ' : '') + '18px ' + FONT;
       ctx.fillText((i === this.pauseSel ? '▶ ' : '') + s, VW / 2, VH / 2 - 50 + i * 34);
       this.addHot(VW / 2 - 170, VH / 2 - 74 + i * 34, 340, 32, () => this.activatePause(), () => { this.pauseSel = i; });
@@ -708,6 +816,7 @@ const Game = {
     ctx.fillStyle = 'rgba(200,200,200,0.55)'; ctx.font = '12px ' + FONT;
     const hp = [{ k: 'move' }, '移动', { k: 'jump' }, '跳跃', { k: 'dash' }, '冲刺'];
     if (Inventory.canAttack()) hp.push({ k: 'attack' }, '攻击');
+    if (Inventory.owned().length > 1) hp.push({ k: 'swap' }, '换武器');
     hp.push({ k: 'down' }, '+', { k: 'jump' }, '下落', { k: 'inv' }, '仓库');
     if (!Input.usingPad) hp.push({ k: 'restart' }, '自毁重构', { k: 'mute' }, '静音');
     drawHintLine(ctx, VW / 2, VH - 50, hp, { align: 'center' });
@@ -719,7 +828,8 @@ const Game = {
   // ---------------- 标题 / 剧情 / 结局 ----------------
   renderTitle(ctx) {
     const t = this.t, view = { x: t * 18, y: 0 };
-    drawBackground(ctx, view, THEMES.hall, t);
+    const tch = this.titleCh || 1, TC = CHAPTERS[tch];
+    drawBackground(ctx, view, tch === 2 ? THEMES.hive : THEMES.hall, t);
     ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(0, 0, VW, VH);
     // 展台上的拉撒路
     const px = 720, py = 400;
@@ -746,14 +856,14 @@ const Game = {
     ctx.fillStyle = 'rgba(40,255,255,0.55)'; ctx.fillText('LAZARUS', tx + 3 - g, ty);
     ctx.globalCompositeOperation = 'source-over';
     ctx.fillStyle = '#f2ead6'; ctx.fillText('LAZARUS', tx, ty);
-    ctx.fillStyle = '#c9b88a'; ctx.font = '18px ' + FONT; ctx.fillText('第一章 · 死寂博物馆', tx + 4, ty + 40);
-    ctx.fillStyle = 'rgba(200,190,160,0.6)'; ctx.font = '12px ' + MONO; ctx.fillText('CHAPTER 1 · THE SILENT MUSEUM', tx + 4, ty + 62);
+    ctx.fillStyle = '#c9b88a'; ctx.font = '18px ' + FONT; ctx.fillText(`${CH_NUM[tch]} · ${TC.name}`, tx + 4, ty + 40);
+    ctx.fillStyle = 'rgba(200,190,160,0.6)'; ctx.font = '12px ' + MONO; ctx.fillText(`CHAPTER ${tch} · ${TC.en}`, tx + 4, ty + 62);
     // 菜单
     this.menu.forEach((m, i) => {
       const sel = i === this.menuSel;
       ctx.fillStyle = sel ? '#7ff' : 'rgba(220,220,220,0.6)'; ctx.font = (sel ? 'bold ' : '') + '20px ' + FONT;
-      ctx.fillText((sel ? '▶ ' : '   ') + m.label, tx, 290 + i * 30);
-      this.addHot(tx - 10, 290 + i * 30 - 22, 380, 28, () => { if (this.stateT > 0.3) this.activateTitle(); }, () => { this.menuSel = i; });
+      ctx.fillText((sel ? '▶ ' : '   ') + m.label, tx, 278 + i * 28);
+      this.addHot(tx - 10, 278 + i * 28 - 21, 380, 27, () => { if (this.stateT > 0.3) this.activateTitle(); }, () => { this.menuSel = i; });
     });
     ctx.fillStyle = 'rgba(200,200,200,0.5)'; ctx.font = '12px ' + FONT;
     drawHintLine(ctx, tx, 440, [{ k: 'confirm' }, '确认', { k: 'select' }, '选择'].concat(Input.usingPad ? [] : [{ k: 'mute' }, '静音']));
@@ -768,9 +878,10 @@ const Game = {
     ctx.drawImage(Art.scan, 0, 0);
     ctx.textAlign = 'center'; ctx.font = '22px ' + FONT;
     const y0 = VH / 2 - (this.storyIdx * 0);
-    for (let i = Math.max(0, this.storyIdx - 3); i <= this.storyIdx && i < STORY.length; i++) {
+    const SL = this.storyLines;
+    for (let i = Math.max(0, this.storyIdx - 3); i <= this.storyIdx && i < SL.length; i++) {
       const cur = i === this.storyIdx, d = this.storyIdx - i;
-      const text = cur ? STORY[i].slice(0, Math.floor(this.storyT * 22)) : STORY[i];
+      const text = cur ? SL[i].slice(0, Math.floor(this.storyT * 22)) : SL[i];
       ctx.fillStyle = cur ? '#e8f4f0' : `rgba(200,210,200,${0.45 - d * 0.12})`;
       ctx.fillText(text, VW / 2, y0 - d * 44 + 20);
     }
@@ -782,28 +893,32 @@ const Game = {
   renderEnd(ctx) {
     this.endT = (this.endT || 0) + 1 / 60;
     const t = this.stateT;
-    drawBackground(ctx, { x: this.t * 10, y: 0 }, THEMES.dome, this.t);
+    const ch = this.endCh || 1, C = CHAPTERS[ch], E = C.end || {};
+    drawBackground(ctx, { x: this.t * 10, y: 0 }, THEMES[E.theme || 'dome'], this.t);
     ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(0, 0, VW, VH);
     ctx.textAlign = 'center';
     ctx.globalAlpha = Math.min(1, t);
-    ctx.fillStyle = '#f2ead6'; ctx.font = 'bold 40px ' + FONT; ctx.fillText('第一章 · 死寂博物馆', VW / 2, 150);
-    ctx.fillStyle = '#8fe'; ctx.font = 'bold 16px ' + MONO; ctx.fillText('CHAPTER 1 CLEAR', VW / 2, 185);
+    ctx.fillStyle = '#f2ead6'; ctx.font = 'bold 40px ' + FONT; ctx.fillText(`${CH_NUM[ch]} · ${C.name}`, VW / 2, 150);
+    ctx.fillStyle = '#8fe'; ctx.font = 'bold 16px ' + MONO; ctx.fillText(`CHAPTER ${ch} CLEAR`, VW / 2, 185);
     ctx.globalAlpha = Math.min(1, Math.max(0, t - 0.8));
     const mm = Math.floor(this.runTime / 60), ss = Math.floor(this.runTime % 60);
     ctx.font = '18px ' + FONT; ctx.fillStyle = '#e6dcc0';
     ctx.fillText(`重构次数　${this.deaths}`, VW / 2, 250);
-    ctx.fillText(`记忆芯片　${this.chips.size} / ${CHIP_TOTAL}`, VW / 2, 282);
+    ctx.fillText(`记忆芯片　${chipsIn(this.chips, ch)} / ${chipTotal(ch)}`, VW / 2, 282);
     ctx.fillText(`用时　${mm}分${String(ss).padStart(2, '0')}秒`, VW / 2, 314);
-    if (Inventory.ability('relicBlade')) { ctx.fillStyle = '#fc6'; ctx.font = 'bold 15px ' + FONT; ctx.fillText('武器升级：巨像残刃（可在「章节选择」中带着它重玩本章）', VW / 2, 346); }
+    if (E.reward && Inventory.ability(E.reward[0])) { ctx.fillStyle = '#fc6'; ctx.font = 'bold 15px ' + FONT; ctx.fillText(E.reward[1], VW / 2, 346); }
     ctx.globalAlpha = Math.min(1, Math.max(0, t - 2));
     ctx.font = '15px ' + FONT; ctx.fillStyle = 'rgba(220,220,210,0.8)';
-    ctx.fillText('电梯缓缓上升。无线电里，伊娃的声音一如既往地温柔。', VW / 2, 380);
+    ctx.fillText(E.line || '', VW / 2, 380);
     const glitch = (this.t % 5) < 0.12;
     ctx.fillStyle = glitch ? '#f55' : 'rgba(220,220,210,0.8)';
-    ctx.fillText(glitch ? '「迭代进度 1 / 39。」' : '「我们在地表等你，拉撒路。」', VW / 2, 408);
+    ctx.fillText(glitch ? E.glitch || '' : E.quote || '', VW / 2, 408);
     ctx.globalAlpha = Math.min(1, Math.max(0, t - 3));
-    ctx.fillStyle = '#c9b88a'; ctx.font = '13px ' + FONT; ctx.fillText('—— 第二章 敬请期待 ——', VW / 2, 470);
-    if (t > 2 && (this.t * 2) % 2 < 1.4) { ctx.fillStyle = 'rgba(150,200,190,0.7)'; ctx.font = '12px ' + FONT; drawHintLine(ctx, VW / 2, 510, ['按', { k: 'confirm' }, '返回标题'], { align: 'center', color: 'rgba(150,200,190,0.8)' }); }
+    const hasNext = CHAPTERS[ch + 1] && chapterStart(ch + 1) >= 0;
+    ctx.fillStyle = '#c9b88a'; ctx.font = '13px ' + FONT;
+    ctx.fillText(hasNext ? `—— 下一章：${CH_NUM[ch + 1]} · ${CHAPTERS[ch + 1].name} ——` : `—— ${CH_NUM[ch + 1] || '下一章'} 敬请期待 ——`, VW / 2, 470);
+    if (t > 2 && (this.t * 2) % 2 < 1.4) { ctx.fillStyle = 'rgba(150,200,190,0.7)'; ctx.font = '12px ' + FONT; drawHintLine(ctx, VW / 2, 510, ['按', { k: 'confirm' }, hasNext ? '继续' : '返回标题'], { align: 'center', color: 'rgba(150,200,190,0.8)' }); }
+    if (t > 2) this.addHot(0, 0, VW, VH, () => this.leaveEnd());
     ctx.textAlign = 'left'; ctx.globalAlpha = 1;
     ctx.drawImage(Art.vignette, 0, 0); ctx.drawImage(Art.scan, 0, 0);
   },

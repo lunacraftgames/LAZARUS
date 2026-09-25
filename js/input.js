@@ -10,7 +10,7 @@
 // 标准布局按钮编号：0 下  1 右  2 左  3 上  4 LB  5 RB  6 LT  7 RT  8 Select  9 Start  10 L3  11 R3  12-15 十字键 上下左右  16 Home
 const PAD_BIND = {
   left: [14], right: [15], up: [12], down: [13],
-  jump: [0], dash: [2, 5, 7], attack: [3, 1, 4, 6],
+  jump: [0], dash: [2, 5, 7], attack: [3, 1, 4, 6], swap: [11],
   confirm: [0], back: [1], skip: [9], pause: [9], inv: [8],
 };
 // 任天堂习惯：菜单里右侧 A 确认、下方 B 返回
@@ -21,10 +21,10 @@ const bindsFor = (t) => (t === 'switch' ? Object.assign({}, PAD_BIND, { confirm:
 const DEFAULT_KEYS = {
   left: ['ArrowLeft', 'KeyA', null], right: ['ArrowRight', 'KeyD', null], up: ['ArrowUp', 'KeyW', null], down: ['ArrowDown', 'KeyS', null],
   jump: ['Space', 'KeyZ', 'KeyK'], dash: ['ShiftLeft', 'KeyX', 'KeyJ'], attack: ['KeyC', 'KeyU', 'KeyH'],
-  inv: ['KeyI', 'Tab', null], restart: ['KeyR', null, null], mute: ['KeyM', null, null],
+  swap: ['KeyQ', null, null], inv: ['KeyI', 'Tab', null], restart: ['KeyR', null, null], mute: ['KeyM', null, null],
 };
-const DEFAULT_PAD = { jump: [0], dash: [2, 5, 7], attack: [3, 1, 4, 6], inv: [8] };
-const PAD_REBINDABLE = ['jump', 'dash', 'attack', 'inv'];
+const DEFAULT_PAD = { jump: [0], dash: [2, 5, 7], attack: [3, 1, 4, 6], swap: [11], inv: [8] };
+const PAD_REBINDABLE = ['jump', 'dash', 'attack', 'swap', 'inv'];
 // 这些键固定用于菜单 / 暂停，不能被改绑
 const RESERVED_KEYS = ['Escape', 'Enter', 'NumpadEnter', 'Backspace', 'MetaLeft', 'MetaRight', 'ContextMenu', 'F5', 'F11', 'F12'];
 const KEY_NAMES = {
@@ -49,10 +49,10 @@ const PAD_REMAP = {
 };
 // 按键提示文字（按标准编号）
 const PAD_GLYPHS = {
-  xbox: { 0: 'A', 1: 'B', 2: 'X', 3: 'Y', 4: 'LB', 5: 'RB', 6: 'LT', 7: 'RT', 8: 'View', 9: 'Menu' },
-  ps: { 0: '✕', 1: '○', 2: '□', 3: '△', 4: 'L1', 5: 'R1', 6: 'L2', 7: 'R2', 8: 'Share', 9: 'Options' },
-  switch: { 0: 'B', 1: 'A', 2: 'Y', 3: 'X', 4: 'L', 5: 'R', 6: 'ZL', 7: 'ZR', 8: '−', 9: '+' },
-  generic: { 0: '1', 1: '2', 2: '3', 3: '4', 4: 'L1', 5: 'R1', 6: 'L2', 7: 'R2', 8: 'Select', 9: 'Start' },
+  xbox: { 0: 'A', 1: 'B', 2: 'X', 3: 'Y', 4: 'LB', 5: 'RB', 6: 'LT', 7: 'RT', 8: 'View', 9: 'Menu', 10: 'LS', 11: 'RS' },
+  ps: { 0: '✕', 1: '○', 2: '□', 3: '△', 4: 'L1', 5: 'R1', 6: 'L2', 7: 'R2', 8: 'Share', 9: 'Options', 10: 'L3', 11: 'R3' },
+  switch: { 0: 'B', 1: 'A', 2: 'Y', 3: 'X', 4: 'L', 5: 'R', 6: 'ZL', 7: 'ZR', 8: '−', 9: '+', 10: 'LS', 11: 'RS' },
+  generic: { 0: '1', 1: '2', 2: '3', 3: '4', 4: 'L1', 5: 'R1', 6: 'L2', 7: 'R2', 8: 'Select', 9: 'Start', 10: 'L3', 11: 'R3' },
 };
 const PAD_COLORS = {
   xbox: { 0: '#5c5', 1: '#e44', 2: '#48f', 3: '#ec3' },
@@ -87,6 +87,10 @@ const Input = {
     const keys = JSON.parse(JSON.stringify(DEFAULT_KEYS)), pad = JSON.parse(JSON.stringify(DEFAULT_PAD));
     if (b && b.keys) for (const a in keys) if (Array.isArray(b.keys[a])) keys[a] = [0, 1, 2].map((i) => b.keys[a][i] || null);
     if (b && b.pad) for (const a of PAD_REBINDABLE) if (Array.isArray(b.pad[a]) && b.pad[a].length) pad[a] = b.pad[a].slice();
+    // 旧存档里没有「切换武器」：如果默认键已被玩家用在别处，就先留空，避免一个键触发两个动作
+    if (b && b.keys && !b.keys.swap) keys.swap = keys.swap.map((c) => (c && Object.keys(keys).some((x) => x !== 'swap' && keys[x].includes(c)) ? null : c));
+    if (b && b.pad && !b.pad.swap) pad.swap = pad.swap.filter((btn) => !PAD_REBINDABLE.some((x) => x !== 'swap' && pad[x].includes(btn)));
+    if (!pad.swap.length) pad.swap = [11];
     this.binds = { keys, pad, upJump: b && typeof b.upJump === 'boolean' ? b.upJump : true };
     this.rebuild();
   },
@@ -96,7 +100,7 @@ const Input = {
     const k = this.binds.keys, arrows = { mu: 'ArrowUp', md: 'ArrowDown', ml: 'ArrowLeft', mr: 'ArrowRight' };
     this.map = {
       left: uniq(k.left), right: uniq(k.right), up: uniq(k.up), down: uniq(k.down),
-      jump: uniq([...k.jump, ...(this.binds.upJump ? k.up : [])]), dash: uniq(k.dash), attack: uniq(k.attack), inv: uniq(k.inv),
+      jump: uniq([...k.jump, ...(this.binds.upJump ? k.up : [])]), dash: uniq(k.dash), attack: uniq(k.attack), swap: uniq(k.swap), inv: uniq(k.inv),
       confirm: uniq(['Enter', 'NumpadEnter', ...k.jump]), back: ['Escape', 'Backspace'], skip: ['Enter', 'NumpadEnter'], pause: ['Escape'],
       mute: uniq(k.mute), restart: uniq(k.restart),
       // 菜单导航：方向键永远可用 + 玩家自定义的方向键

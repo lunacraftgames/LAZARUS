@@ -46,8 +46,9 @@ function wrapText(ctx, text, maxW) {
 //  '#' 石块  '=' 大理石  '-' 单向平台  '^' 'v' 碎玻璃尖刺
 // ------------------------------------------------------------
 class World {
-  constructor(grid) {
+  constructor(grid, water) {
     this.grid = grid; this.h = grid.length; this.w = grid[0].length;
+    this.water = water || null; // 高密度培养液区域（布尔二维数组）
     this.pw = this.w * TILE; this.ph = this.h * TILE;
     this.solids = []; // {x,y,w,h,active,oneWay,owner}
   }
@@ -56,6 +57,8 @@ class World {
   oneWayAt(cx, cy) { return this.tile(cx, cy) === '-'; }
   blockAt(cx, cy) { return this.solidAt(cx, cy) || this.oneWayAt(cx, cy); }
   pointSolid(x, y) { return this.solidAt(Math.floor(x / TILE), Math.floor(y / TILE)); }
+  waterAt(cx, cy) { return !!(this.water && cy >= 0 && cy < this.h && cx >= 0 && cx < this.w && this.water[cy][cx] && !this.solidAt(cx, cy)); }
+  pointWater(x, y) { return this.waterAt(Math.floor(x / TILE), Math.floor(y / TILE)); }
   supportAt(x, y) {
     if (this.blockAt(Math.floor(x / TILE), Math.floor(y / TILE))) return true;
     for (const s of this.solids) if (s.active && x >= s.x && x <= s.x + s.w && y >= s.y && y <= s.y + s.h) return true;

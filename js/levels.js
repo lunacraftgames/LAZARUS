@@ -35,12 +35,17 @@ const RADIO = {
   ],
   sabreGet: [
     ['EVA', '很好。有了它，你不用再只靠踩了。'],
-    ['SYS', '[已解锁] {attack} 挥砍 · 空中按住 ↓ 再挥砍 = 下劈弹跳 · 可以劈开炸弹'],
+    ['SYS', '[已解锁] {attack} 挥砍 · 空中按住 ↓ 再挥砍 = 下劈弹跳 · 砍中炸弹会把它弹反回去'],
   ],
   bladeGet: [
     ['EVA', '那是巨像的残刃……比那把军刀长得多，也重得多。带上它。'],
-    ['SYS', '[武器升级] 攻击距离更长 · 可以直接劈开看守者的盾牌'],
+    ['SYS', '[新武器] 距离更长、能破盾 · 按住 {attack} 蓄力再松开 = 重劈 · {swap} 切换武器'],
     ['EVA', '上面的东西，会比这里的一切都难对付。'],
+  ],
+  gunGet: [
+    ['EVA', '一把燧发枪？……十九世纪的东西，居然还能打响。'],
+    ['SYS', '[新武器] {attack} 开枪 · 按住 ↑ 朝上 / 空中按住 ↓ 朝下 · 后坐力会推动你 · {swap} 切换武器'],
+    ['EVA', '上面那些无人机和吊灯，现在够得着了。'],
   ],
   bossFirstHit: [['EVA', '有效！反噬电流击穿了它的装甲！']],
   bossPhase2: [['EVA', '它在切换攻击模式……小心背上那门古董炮！']],
@@ -100,8 +105,11 @@ const STORY = [
 
 function makeBuilder(w, h) {
   const grid = Array.from({ length: h }, () => Array(w).fill(' '));
+  const water = Array.from({ length: h }, () => Array(w).fill(false));
   return {
-    w, h, grid,
+    w, h, grid, water,
+    // 高密度培养液区域（第二章）：与瓦片分开存放，实体可以放在水中
+    liquid(x0, y0, x1, y1) { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (x >= 0 && x < w && y >= 0 && y < h) water[y][x] = true; },
     fill(x0, y0, x1, y1, ch) { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (x >= 0 && x < w && y >= 0 && y < h) grid[y][x] = ch; },
     set(x, y, ch) { if (x >= 0 && x < w && y >= 0 && y < h) grid[y][x] = ch; },
   };
@@ -415,7 +423,7 @@ const LEVELS = [
   //  1-8 坍塌天井：大段垂直攀爬、坍塌石板、双弹床
   // ------------------------------------------------------------
   {
-    id: '1-8', name: '坍塌天井', en: 'COLLAPSED ATRIUM', w: 36, h: 80, theme: THEMES.shaft, music: 'dome',
+    id: '1-8', name: '坍塌天井', en: 'COLLAPSED ATRIUM', weapon: '获得：古董燧发枪', w: 36, h: 80, theme: THEMES.shaft, music: 'dome',
     build(B) {
       B.fill(0, 0, 1, 79, '#'); B.fill(34, 0, 35, 79, '#'); B.fill(0, 0, 35, 1, '#'); B.fill(2, 77, 33, 79, '#');
       B.set(4, 76, 'S');
@@ -425,7 +433,7 @@ const LEVELS = [
       B.fill(27, 65, 30, 65, 'C');
       B.fill(30, 62, 33, 62, '='); B.set(32, 61, 'T');
       B.set(10, 58, 'd');
-      B.fill(20, 53, 33, 53, '-'); B.set(31, 52, 'K'); B.set(23, 52, 'm');
+      B.fill(20, 53, 33, 53, '-'); B.set(31, 52, 'K'); B.set(23, 52, 'm'); B.set(27, 52, 'F');
       B.fill(14, 50, 17, 50, '=');
       B.fill(8, 47, 11, 47, 'C');
       B.fill(2, 44, 5, 44, '=');
@@ -508,5 +516,30 @@ const LEVELS = [
   },
 ];
 
-// 芯片总数（随关卡自动统计）
-const CHIP_TOTAL = LEVELS.reduce((n, L) => { const B = makeBuilder(L.w, L.h); L.build(B); return n + B.grid.flat().filter((c) => c === 'o').length; }, 0);
+// 章节表（后续章节在自己的文件里注册 CHAPTERS[n]）
+const CH_NUM = ['', '第一章', '第二章', '第三章', '第四章'];
+const CHAPTERS = {
+  1: {
+    name: '死寂博物馆', en: 'THE SILENT MUSEUM', story: STORY, lore: LORE,
+    end: {
+      theme: 'dome', reward: ['relicBlade', '武器升级：巨像残刃（可在「章节选择」中带着它重玩本章）'],
+      line: '电梯缓缓上升。无线电里，伊娃的声音一如既往地温柔。', quote: '「我们在地表等你，拉撒路。」', glitch: '「迭代进度 1 / 39。」',
+    },
+  },
+};
+function chapterOf(L) { return parseInt(L.id, 10) || 1; }
+function chapterStart(ch) { return LEVELS.findIndex((L) => chapterOf(L) === ch); }
+// 某章的芯片总数（随关卡自动统计，结果缓存）
+const _chipCache = {};
+function chipTotal(ch) {
+  if (_chipCache[ch] == null) _chipCache[ch] = LEVELS.filter((L) => chapterOf(L) === ch).reduce((n, L) => { const B = makeBuilder(L.w, L.h); L.build(B); return n + B.grid.flat().filter((c) => c === 'o').length; }, 0);
+  return _chipCache[ch];
+}
+// 只统计当前关卡里真实存在的芯片（旧版本存档里可能留有已经不存在的编号）
+const _lvChips = {};
+function levelChipCount(id) {
+  if (_lvChips[id] == null) { const L = LEVELS.find((l) => l.id === id); if (!L) return 0; const B = makeBuilder(L.w, L.h); L.build(B); _lvChips[id] = B.grid.flat().filter((c) => c === 'o').length; }
+  return _lvChips[id];
+}
+function chipValid(id) { const [lv, k] = String(id).split('#'); return +k >= 0 && +k < levelChipCount(lv); }
+function chipsIn(set, ch) { let n = 0; for (const id of set) if (parseInt(id, 10) === ch && chipValid(id)) n++; return n; }

@@ -61,7 +61,7 @@ class Spring {
     this.comp = Math.max(0, this.comp - dt * 4); this.cd -= dt;
     const p = g.player;
     if (g.state === 'play' && this.cd <= 0 && p.vy >= 0 && overlap(p, this)) {
-      p.y = this.y - p.h; p.vy = -PL.SPRING; p.jumping = false; p.onGround = false; p.canDash = true; p.dashT = 0; p.coyote = 0;
+      p.y = this.y - p.h; p.vy = -PL.SPRING; p.jumping = false; p.onGround = false; p.canDash = true; p.dashT = 0; p.coyote = 0; p.jumpsLeft = 1;
       p.sx = 0.7; p.sy = 1.4; this.comp = 1; this.cd = 0.15;
       Sound.sfx.spring(); Input.rumble(0.1, 0.5, 90);
       g.particles.burst(this.x + 14, this.y, 10, { color: ['#ffd070', '#fff'], smin: 60, smax: 180, angle: -Math.PI / 2, spread: 0.8, lmin: 0.2, lmax: 0.4, add: true });
@@ -419,7 +419,8 @@ class Knight {
   // 盾牌/刺盔：未晕眩时，从正面或上方的攻击都会被挡下
   guard(p, kind) {
     if (this.state === 'stun') return false;
-    if (kind === 'blade' && Inventory.ability('relicBlade')) return false; // 巨像残刃可破甲
+    if (kind === 'heavy' || kind === 'spore') return false; // 重劈 / 冲击波 / 孢子腐蚀：无视盾牌
+    if (kind === 'blade' && Inventory.weapon() === 'relicBlade') return false; // 巨像残刃可破甲
     const front = Math.sign(p.cx - (this.x + this.w / 2)) === this.dir;
     const above = p.y + p.h <= this.y + 8;
     return front || above;
@@ -584,6 +585,9 @@ class Chandelier {
   }
 }
 
+// 地图字符 → 场景物件工厂（后续章节注册；返回 null 表示不生成）
+const PROP_FACTORIES = {};
+
 function makeEnemy(s, world) {
   switch (s.type) {
     case 's': return new Scrubber(s.cx, s.cy, false, world);
@@ -604,6 +608,8 @@ const PICKUP_INFO = {
   dashStrike: { label: '冲撞模块', color: '255,170,80' },
   sabre: { label: '仪仗军刀', color: '220,235,255' },
   relicBlade: { label: '巨像残刃', color: '255,210,120' },
+  flintlock: { label: '古董燧发枪', color: '255,200,140' },
+  sporeGun: { label: '生物孢子枪', color: '150,240,190' },
 };
 class AbilityPickup {
   constructor(x, groundY, key) { this.key = key; this.x = x - 14; this.y = groundY - 56; this.w = 28; this.h = 56; this.t = 0; this.got = false; }
@@ -633,7 +639,11 @@ class AbilityPickup {
       ctx.fillStyle = 'rgba(150,220,235,0.14)'; ctx.fillRect(x - 16, y - 54, 32, 40);
       ctx.strokeStyle = 'rgba(191,232,240,0.7)'; ctx.lineWidth = 1.5; ctx.strokeRect(x - 16, y - 54, 32, 40);
       const bob = Math.sin(g.t * 2.5) * 2;
-      if (this.key === 'sabre') {
+      if (this.key === 'flintlock' || this.key === 'sporeGun') {
+        ctx.save(); ctx.translate(x, y - 34 + bob);
+        ItemArt.icon(ctx, this.key, 0, 0, 0.16, g.t);
+        ctx.restore();
+      } else if (this.key === 'sabre') {
         ctx.save(); ctx.translate(x, y - 34 + bob); ctx.rotate(-0.6);
         ctx.strokeStyle = '#dfe6ee'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(-2, 14); ctx.quadraticCurveTo(4, -2, 2, -18); ctx.stroke();
         ctx.fillStyle = '#c9a030'; ctx.fillRect(-7, 13, 12, 3); ctx.fillStyle = '#5a3a20'; ctx.fillRect(-3, 16, 3, 7);

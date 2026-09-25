@@ -216,7 +216,9 @@ function drawBackground(ctx, cam, th, t) {
   const g = ctx.createLinearGradient(0, 0, 0, VH);
   g.addColorStop(0, th.top); g.addColorStop(1, th.bottom);
   ctx.fillStyle = g; ctx.fillRect(0, 0, VW, VH);
-  ctx.globalAlpha = 0.55; tileLayer(ctx, Art.mural, cam.x * 0.25, cam.y * 0.25 + (th.vtile ? 0 : 40), th.vtile); ctx.globalAlpha = 1;
+  // 章节可以通过 th.back / th.mid（返回画布的函数）替换远景与中景
+  const back = th.back ? th.back() : Art.mural, mid = th.mid ? th.mid() : Art.columns;
+  ctx.globalAlpha = th.backAlpha || 0.55; tileLayer(ctx, back, cam.x * 0.25, cam.y * 0.25 + (th.vtile ? 0 : 40), th.vtile); ctx.globalAlpha = 1;
   // 光柱
   ctx.globalCompositeOperation = 'lighter';
   for (let i = 0; i < 3; i++) {
@@ -229,7 +231,8 @@ function drawBackground(ctx, cam, th, t) {
     ctx.moveTo(bx + sway, 0); ctx.lineTo(bx + 70 + sway, 0); ctx.lineTo(bx - 120, VH); ctx.lineTo(bx - 260, VH); ctx.fill();
   }
   ctx.globalCompositeOperation = 'source-over';
-  tileLayer(ctx, Art.columns, cam.x * 0.5, cam.y * 0.5 + (th.vtile ? 0 : 60), th.vtile);
+  tileLayer(ctx, mid, cam.x * 0.5, cam.y * 0.5 + (th.vtile ? 0 : 60), th.vtile);
+  if (th.overlay) th.overlay(ctx, cam, t);
   ctx.fillStyle = th.haze; ctx.fillRect(0, 0, VW, VH);
   ctx.fillStyle = 'rgba(4,6,8,0.42)'; ctx.fillRect(0, 0, VW, VH);
   // 浮尘
@@ -244,7 +247,11 @@ function drawBackground(ctx, cam, th, t) {
 }
 
 // ---------------- 瓦片预渲染 ----------------
-function renderTiles(world, occ) {
+// 瓦片风格注册表：章节可以注册自己的画法（见 chapter2.js 的 hive）
+const TILESETS = {};
+function renderTiles(world, occ, setName) {
+  const T = TILESETS[setName] || TILESETS.museum;
+  const drawStone = T.stone, drawMarble = T.marble, drawShelf = T.shelf, drawShards = T.shards, drawProp = T.prop;
   const c = mkCanvas(world.pw, world.ph), x = c.getContext('2d');
   for (let cy = 0; cy < world.h; cy++) {
     for (let cx = 0; cx < world.w; cx++) {
@@ -362,3 +369,5 @@ function drawProp(x, cx, gy, type) {
   }
   x.restore();
 }
+
+TILESETS.museum = { stone: drawStone, marble: drawMarble, shelf: drawShelf, shards: drawShards, prop: drawProp };
