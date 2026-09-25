@@ -79,7 +79,7 @@ const Game = {
   freeze(t) { this.freezeT = Math.max(this.freezeT, t); },
   flash(a, c) { this.flashA = Math.max(this.flashA, a); this.flashC = c || '#fff'; },
   say(lines) {
-    for (const [who, text] of lines) this.radio.queue.push({ who, text, t: 0 });
+    for (const [who, text] of lines) this.radio.queue.push({ who, text: charText(text), t: 0 }); // 台词按当前角色调整（见 char_lines.js）
   },
   toast(title, text) { this.toasts.push({ title, text, t: 0 }); },
   toastHint(text) { if (!this.hintT || this.t - this.hintT > 4) { this.hintT = this.t; this.toasts.push({ title: '提示', text, t: 0, short: true }); } },
@@ -115,7 +115,7 @@ const Game = {
   },
   // 播放某章开场剧情，结束后进入该章第一关
   playStory(ch) {
-    this.storyCh = ch; this.storyLines = CHAPTERS[ch].story; this.storyDone = null;
+    this.storyCh = ch; this.storyLines = CHAPTERS[ch].story.map((l) => charText(l, true)); this.storyDone = null;
     this.state = 'story'; this.stateT = 0; this.storyIdx = 0; this.storyT = 0; Sound.music('radio');
   },
   get chapter() { return this.level ? chapterOf(this.level) : 1; },
@@ -203,7 +203,7 @@ const Game = {
     this.chips.add(c.id); Sound.sfx.pickup();
     this.particles.burst(c.x + 8, c.y + 8, 18, { color: ['#fc6', '#fff', '#fa4'], smin: 40, smax: 180, lmin: 0.3, lmax: 0.7, add: true });
     const ch = this.chapter, n = chipsIn(this.chips, ch), lore = CHAPTERS[ch].lore;
-    this.toast(`记忆芯片 ${n} / ${chipTotal(ch)}`, lore[(n - 1) % lore.length]);
+    this.toast(`记忆芯片 ${n} / ${chipTotal(ch)}`, charText(lore[(n - 1) % lore.length], true));
     Inventory.p.chipLog[c.id] = 1;
     this.checkChipRewards();
     this.persist();
@@ -416,7 +416,7 @@ const Game = {
   // 剧情播完：默认进入该章第一关；playLines 可以指定别的去向（例如结局剧情 → 结算）
   finishStory() { const done = this.storyDone; this.storyDone = null; if (done) done(); else this.startLevel(chapterStart(this.storyCh)); },
   playLines(lines, done) {
-    this.storyLines = lines; this.storyDone = done;
+    this.storyLines = lines.map((l) => charText(l, true)); this.storyDone = done;
     this.state = 'story'; this.stateT = 0; this.storyIdx = 0; this.storyT = 0;
   },
   updateEnd() {
@@ -733,7 +733,7 @@ const Game = {
     const L = this.level, p = this.player;
     ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(12, 12, 210, 44);
     ctx.fillStyle = '#c9b88a'; ctx.font = 'bold 15px ' + FONT; ctx.fillText(`${L.id}  ${L.name}`, 22, 32);
-    ctx.fillStyle = 'rgba(200,190,160,0.6)'; ctx.font = '10px ' + MONO; ctx.fillText(L.en, 22, 48);
+    ctx.fillStyle = 'rgba(200,190,160,0.6)'; ctx.font = '10px ' + MONO; ctx.fillText(charText(L.en), 22, 48);
     // 冲刺状态
     const dx = 232;
     ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(dx, 12, 118, 44);
@@ -783,7 +783,7 @@ const Game = {
       const w = 440, x = VW / 2 - w / 2, y = VH - 34;
       ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(x - 6, y - 22, w + 12, 38);
       ctx.fillStyle = '#e8c8a0'; ctx.font = 'bold 12px ' + FONT; ctx.textAlign = 'center';
-      ctx.fillText(b.title || '博物馆守卫 · 巨像1号  THE COLOSSUS', VW / 2, y - 7); ctx.textAlign = 'left';
+      ctx.fillText(charText(b.title) || '博物馆守卫 · 巨像1号  THE COLOSSUS', VW / 2, y - 7); ctx.textAlign = 'left';
       if (b.waveInfo) { ctx.textAlign = 'right'; ctx.fillStyle = b.state === 'exposed' ? '#f8c' : '#9ce'; ctx.font = 'bold 11px ' + FONT; ctx.fillText(b.waveInfo, x + w, y - 7); ctx.textAlign = 'left'; }
       ctx.fillStyle = '#2a1414'; ctx.fillRect(x, y, w, 10);
       const k = b.hp / b.maxHp;
@@ -813,7 +813,7 @@ const Game = {
     ctx.strokeStyle = glitch ? '#f55' : '#6fd'; ctx.beginPath();
     for (let i = 0; i < 50; i++) { const yy = y + 42 + Math.sin(this.t * 20 + i * 0.7) * (c.t * 30 < c.text.length ? rand(3, 16) : 2); i ? ctx.lineTo(x + 14 + i, yy) : ctx.moveTo(x + 14, yy); }
     ctx.stroke();
-    let name = SPEAKERS[c.who] || c.who;
+    let name = charText(SPEAKERS[c.who] || c.who);
     if (R.glitch > 0 || c.who === 'OMNI') name = 'Ω-MIND · 万脑';
     ctx.font = 'bold 13px ' + FONT; ctx.fillStyle = glitch ? '#f66' : '#8fe';
     ctx.fillText(name, x + 78, y + 22);
@@ -855,7 +855,7 @@ const Game = {
     ctx.textAlign = 'center';
     ctx.fillStyle = '#c9b88a'; ctx.font = 'bold 14px ' + MONO; ctx.fillText(`CHAPTER ${this.chapter} · ${CHAPTERS[this.chapter].en} · ${this.level.id}`, VW / 2, y - 18);
     ctx.fillStyle = '#f2ead6'; ctx.font = 'bold 34px ' + FONT; ctx.fillText(this.level.name, VW / 2, y + 22);
-    ctx.fillStyle = 'rgba(200,190,160,0.7)'; ctx.font = '12px ' + MONO; ctx.fillText(this.level.en, VW / 2, y + 40);
+    ctx.fillStyle = 'rgba(200,190,160,0.7)'; ctx.font = '12px ' + MONO; ctx.fillText(charText(this.level.en), VW / 2, y + 40);
     ctx.textAlign = 'left'; ctx.globalAlpha = 1;
   },
   drawRebuild(ctx) {
@@ -998,7 +998,7 @@ const Game = {
     ctx.fillText(`重构次数　${this.deaths}`, VW / 2, 250);
     ctx.fillText(`记忆芯片　${chipsIn(this.chips, ch)} / ${chipTotal(ch)}`, VW / 2, 282);
     ctx.fillText(`用时　${mm}分${String(ss).padStart(2, '0')}秒`, VW / 2, 314);
-    if (E.reward && Inventory.ability(E.reward[0])) { ctx.fillStyle = '#fc6'; ctx.font = 'bold 15px ' + FONT; ctx.fillText(E.reward[1], VW / 2, 346); }
+    if (E.reward && Inventory.ability(E.reward[0])) { ctx.fillStyle = '#fc6'; ctx.font = 'bold 15px ' + FONT; ctx.fillText(charText(E.reward[1]), VW / 2, 346); }
     else if (E.final) {
       let got = 0, tot = 0; for (let c = 1; CHAPTERS[c]; c++) { got += this.chipLogIn(c); tot += chipTotal(c); }
       ctx.fillStyle = Inventory.p.hiddenEnd ? '#f6c' : '#fc6'; ctx.font = 'bold 15px ' + FONT;
@@ -1006,10 +1006,10 @@ const Game = {
     }
     ctx.globalAlpha = Math.min(1, Math.max(0, t - 2));
     ctx.font = '15px ' + FONT; ctx.fillStyle = 'rgba(220,220,210,0.8)';
-    ctx.fillText(E.line || '', VW / 2, 380);
+    ctx.fillText(charText(E.line || ''), VW / 2, 380);
     const glitch = (this.t % 5) < 0.12;
     ctx.fillStyle = glitch ? '#f55' : 'rgba(220,220,210,0.8)';
-    ctx.fillText(glitch ? E.glitch || '' : E.quote || '', VW / 2, 408);
+    ctx.fillText(charText(glitch ? E.glitch || '' : E.quote || ''), VW / 2, 408);
     ctx.globalAlpha = Math.min(1, Math.max(0, t - 3));
     const hasNext = CHAPTERS[ch + 1] && chapterStart(ch + 1) >= 0;
     ctx.fillStyle = '#c9b88a'; ctx.font = '13px ' + FONT;

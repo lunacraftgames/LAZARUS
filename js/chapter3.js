@@ -995,23 +995,26 @@ class MirrorLazarus {
       ctx.stroke(); ctx.setLineDash([]);
     }
     const body = Object.assign(ghostBody(!this.air), { vx: this.vx, run: this.run });
+    // 镜像的是玩家当前的角色：小扫的周目里画成放大的小扫（放大到和判定框差不多高）
+    const pc = g.player && g.player.C, alt = pc && pc.draw, S = alt ? 3 : 2, by = alt ? -pc.h : -28;
+    if (alt) { body.C = pc; body.h = pc.h; }
     if (this.state === 'record') { // 从录像的第一帧开始逐行成形
       const k = clamp(this.clock / this.delay, 0, 1);
       ctx.save(); ctx.beginPath(); ctx.rect(this.x - 40, this.y - 64 * k, 80, 64 * k); ctx.clip();
       ctx.globalAlpha = 0.25 + k * 0.35;
-      ctx.translate(this.x, this.y); ctx.scale(2, 2);
-      Player.prototype.drawBody.call(body, ctx, -10, -28, this.f, 1, 1, g, '#f35');
+      ctx.translate(this.x, this.y); ctx.scale(S, S);
+      Player.prototype.drawBody.call(body, ctx, -10, by, this.f, 1, 1, g, '#f35');
       ctx.restore(); ctx.globalAlpha = 1;
       ctx.fillStyle = 'rgba(255,120,140,0.9)'; ctx.fillRect(this.x - 28, this.y - 64 * k, 56, 2);
       return;
     }
     const blink = this.hitCd > 0 && (t * 16) % 2 < 1;
-    ctx.save(); ctx.translate(this.x + (Math.random() < 0.05 ? rand(-4, 4) : 0), this.y); ctx.scale(2, 2);
+    ctx.save(); ctx.translate(this.x + (Math.random() < 0.05 ? rand(-4, 4) : 0), this.y); ctx.scale(S, S);
     ctx.globalAlpha = blink ? 0.3 : 0.9;
     if (this.flash > 0 && ctx.filter !== undefined) ctx.filter = 'brightness(2.5)';
-    Player.prototype.drawBody.call(body, ctx, -10, -28, this.f, 1, 1, g, '#c81e3c');
+    Player.prototype.drawBody.call(body, ctx, -10, by, this.f, 1, 1, g, '#c81e3c');
     ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = blink ? 0.1 : 0.35;
-    Player.prototype.drawBody.call(body, ctx, -10 + Math.sin(t * 9) * 0.8, -28, this.f, 1, 1, g, '#ff5a78');
+    Player.prototype.drawBody.call(body, ctx, -10 + Math.sin(t * 9) * 0.8, by, this.f, 1, 1, g, '#ff5a78');
     ctx.globalCompositeOperation = 'source-over'; ctx.filter = 'none';
     ctx.restore(); ctx.globalAlpha = 1;
     // 红光
