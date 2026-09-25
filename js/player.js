@@ -38,6 +38,7 @@ class Player {
       atkT: 0, atkCd: 0, atkDown: false, atkHits: new Set(), atkSwing: 0, chargeT: -1, atkHeavy: false,
       jumpsLeft: 1, slimeT: 0, inWater: false, swimCd: 0,
       lockT: 0, lockImmune: 0, lagT: 0, lagBuf: [], lagOut: null, ctl: {},
+      gd: 1, prevTop: y, cubeRot: 0, frozen: false, lookUp: false, lookT: 0, atkUp: false, // 第四章：重力方向（1 正常 / -1 反转）、一键模式、终局冻结
     });
   }
   hurt() { return { x: this.x + 4, y: this.y + 6, w: this.w - 8, h: this.h - 8 }; }
@@ -46,9 +47,13 @@ class Player {
     const W = this.atkHeavy ? HEAVY : WPN[Inventory.weapon()];
     if (!W || !W.reach) return null;
     const R = W.reach;
-    if (this.atkHeavy) return { x: this.facing > 0 ? this.x + this.w - 10 : this.x + 10 - R, y: this.y - 26, w: R, h: this.h + 34 };
-    if (this.atkDown) return { x: this.x - 12, y: this.y + this.h - 6, w: this.w + 24, h: R - 8 };
-    return { x: this.facing > 0 ? this.x + this.w - 6 : this.x + 6 - R, y: this.y - 10, w: R, h: this.h + 16 };
+    let b;
+    if (this.atkHeavy) b = { x: this.facing > 0 ? this.x + this.w - 10 : this.x + 10 - R, y: this.y - 26, w: R, h: this.h + 34 };
+    else if (this.atkDown) b = { x: this.x - 12, y: this.y + this.h - 6, w: this.w + 24, h: R - 8 };
+    else if (this.atkUp) b = { x: this.x - 12, y: this.y - R + 14, w: this.w + 24, h: R - 8 }; // 按住「向上瞄准」：朝上劈
+    else b = { x: this.facing > 0 ? this.x + this.w - 6 : this.x + 6 - R, y: this.y - 10, w: R, h: this.h + 16 };
+    if (this.gd < 0) b.y = 2 * this.cy - (b.y + b.h); // 重力反转：上下镜像
+    return b;
   }
   trailColor(t, i) {
     const tr = Inventory.equipped('trail');
@@ -77,6 +82,8 @@ class Player {
 
   update(dt, g) {
     const W = g.world;
+    if (this.frozen) return; // 第四章终局演出
+    this.prevTop = this.y;
     if (this.lockT > 0) this.lockT -= dt;
     if (this.lockImmune > 0) this.lockImmune -= dt;
     if (this.lagT > 0) this.lagT -= dt;
@@ -88,6 +95,15 @@ class Player {
     const mx = (I.down('right') ? 1 : 0) - (I.down('left') ? 1 : 0);
     // 本帧的实际操作（镜像执行官读取它）
     const ctl = this.ctl = { tick: g.t, mx, jumpHeld: I.down('jump'), jumped: null, dashed: false, dashDir: null };
+    // 向上瞄准：抬头、举手 / 枪口朝上；站着不动一会儿，镜头会往上看
+    this.lookUp = I.down('up') && !I.down('down');
+    this.lookT = this.lookUp && this.onGround && Math.abs(this.vx) < 30 ? this.lookT + dt : 0;
+    // ---- 第四章：重力方向。下面的物理全部在「本地坐标」里计算（vy > 0 = 朝自己脚下），最后再换回世界坐标 ----
+    const gd = g.core ? g.core.gd : 1;
+    if (gd !== this.gd) { this.gd = gd; this.onGround = false; this.coyote = 0; this.jumping = false; this.jumpsLeft = 1; }
+    if (g.core && g.core.mode === 'cube') return this.updateCube(dt, g, I, ctl);
+    this.vy *= gd;
+    const footY = gd > 0 ? this.y + this.h + 1 : this.y - 1;
     if (I.hit('jump')) this.jumpBuf = PL.BUFFER; else this.jumpBuf -= dt;
     if (this.onGround) { this.coyote = PL.COYOTE; if (this.dashT <= 0) this.canDash = true; } else this.coyote -= dt;
     // ---- 培养液（水下低重力）与粘液状态 ----
@@ -103,7 +119,7 @@ class Player {
     if (I.hit('dash')) {
       if (this.dashLock > 0) { Sound.sfx.denied(); g.hudDeny = 0.6; Input.rumble(0.3, 0, 120); }
       else if (this.canDash && this.dashCd <= 0) {
-        let dx = mx, dy = (I.down('down') ? 1 : 0) - (I.down('up') ? 1 : 0);
+        let dx = mx, dy = I.down('down') ? 1 : 0; // 「向上」只用来瞄准，不会向上冲刺
         if (this.onGround && dy > 0) dy = 0;
         if (!dx && !dy) dx = this.facing;
         const l = Math.hypot(dx, dy);
@@ -122,10 +138,10 @@ class Player {
     if (I.hit('swap')) g.swapWeapon();
     const wk = Inventory.weapon(), WP = WPN[wk];
     if (I.hit('attack')) this.atkBuf = 0.12; else this.atkBuf = (this.atkBuf || 0) - dt; // 攻击输入缓冲：冷却快结束时按下也会出手
-    if (this.atkBuf > 0 && WP && this.atkCd <= 0) {
+    if (this.atkBuf > 0 && WP && this.atkCd <= 0 && !g.noAttack) {
       this.atkBuf = 0;
       if (WP.melee) {
-        this.atkDown = !this.onGround && I.down('down');
+        this.atkDown = !this.onGround && I.down('down'); this.atkUp = !this.atkDown && I.down('up');
         this.atkT = WP.active; this.atkCd = WP.cd; this.atkCdMax = WP.cd; this.atkHits = new Set(); this.atkSwing = WP.swing; this.atkSwingMax = WP.swing; this.atkHeavy = false;
         Sound.sfx.slash(); Input.rumble(0, 0.2, 50);
         if (WP.charge) this.chargeT = 0; // 巨像残刃：出刀后继续按住 = 蓄力
@@ -142,7 +158,7 @@ class Player {
         if (before < WP.charge && this.chargeT >= WP.charge) { Sound.sfx.recharge(); Input.rumble(0.1, 0.3, 80); }
       } else {
         if (this.chargeT >= WP.charge) {
-          this.atkDown = false; this.atkHeavy = true;
+          this.atkDown = false; this.atkUp = false; this.atkHeavy = true;
           this.atkT = HEAVY.active; this.atkCd = HEAVY.cd; this.atkCdMax = HEAVY.cd; this.atkHits = new Set(); this.atkSwing = HEAVY.swing; this.atkSwingMax = HEAVY.swing;
           g.heavySlash(this);
         }
@@ -155,7 +171,7 @@ class Player {
       this.dashT -= dt;
       const ds = this.inWater ? PL.DASH_SPEED * 0.7 : PL.DASH_SPEED;
       this.vx = this.dashDir.x * ds; this.vy = this.dashDir.y * ds;
-      const grounded = this.dashDir.y === 0 && (W.supportAt(this.x + 2, this.y + this.h + 1) || W.supportAt(this.x + this.w - 2, this.y + this.h + 1));
+      const grounded = this.dashDir.y === 0 && (W.supportAt(this.x + 2, footY) || W.supportAt(this.x + this.w - 2, footY));
       if (grounded) this.coyote = PL.COYOTE;
       this.trailT -= dt;
       if (this.trailT <= 0) {
@@ -188,14 +204,16 @@ class Player {
     } else {
       const target = mx * PL.RUN;
       let acc = this.onGround ? (mx ? PL.ACC_G : PL.DEC_G) : (mx ? PL.ACC_A : PL.DEC_A);
+      const wire = g.core && g.core.mode === 'wire'; // 第四章线框视界：没有惯性，起跳高度固定
       // 空中顺着方向时保留冲刺带来的额外速度（手感更宽容）
       if (!this.onGround && mx && Math.sign(this.vx) === mx && Math.abs(this.vx) > PL.RUN) acc = 380;
+      if (wire) acc = 1e5;
       this.vx = approach(this.vx, target, acc * dt);
       if (mx) this.facing = mx;
       let grav = GRAV;
       if (this.jumping && I.down('jump') && Math.abs(this.vy) < 100) grav *= 0.5;
       this.vy = Math.min(this.vy + grav * dt, MAXFALL);
-      if (this.jumping && !I.down('jump') && this.vy < -220) { this.vy *= 0.48; this.jumping = false; }
+      if (this.jumping && !I.down('jump') && this.vy < -220 && !wire) { this.vy *= 0.48; this.jumping = false; }
       if (this.vy >= 0) this.jumping = false;
       if (this.jumpBuf > 0 && this.coyote > 0) {
         this.jumpBuf = 0; this.coyote = 0;
@@ -222,7 +240,7 @@ class Player {
     const hx = W.moveX(this, this.vx * dt);
     if (hx) this.vx = 0;
     const wasGround = this.onGround;
-    const ry = W.moveY(this, this.vy * dt, this.dropT > 0);
+    const ry = W.moveY(this, this.vy * dt * gd, this.dropT > 0 && gd > 0);
     this.onGround = false; this.ground = null; this.groundOneWay = false;
     if (ry) {
       if (this.vy >= 0) {
@@ -239,6 +257,7 @@ class Player {
       }
     }
     this.airT = this.onGround ? 0 : this.airT + dt;
+    this.vy *= gd; // 换回世界坐标
 
     // ---- 动画 ----
     this.sx = approach(this.sx, 1, dt * 3.5); this.sy = approach(this.sy, 1, dt * 3.5);
@@ -247,7 +266,14 @@ class Player {
     this.trail = this.trail.filter((t) => t.t < 0.22);
   }
 
+  // 重力反转时整个身体上下翻转
   draw(ctx, g) {
+    const flip = this.gd < 0;
+    if (flip) { ctx.save(); ctx.translate(0, 2 * this.cy); ctx.scale(1, -1); }
+    this.drawMain(ctx, g);
+    if (flip) ctx.restore();
+  }
+  drawMain(ctx, g) {
     for (const t of this.trail) {
       ctx.globalAlpha = (1 - t.t / 0.22) * 0.45;
       this.drawBody(ctx, t.x, t.y, t.f, 1, 1, g, t.c || '#5ff');
@@ -281,7 +307,8 @@ class Player {
     const sk = Inventory.equipped('blade'), k = 1 - this.atkSwing / (this.atkSwingMax || 0.12);
     const cx = this.cx, cy = this.cy;
     ctx.save(); ctx.translate(cx, cy);
-    if (this.atkDown) ctx.rotate(Math.PI / 2); else ctx.scale(this.facing, 1);
+    if (this.atkDown) ctx.rotate(Math.PI / 2);
+    else { ctx.scale(this.facing, 1); if (this.atkUp && !this.atkHeavy) ctx.rotate(-Math.PI / 2); }
     const a0 = -1.3 + k * 0.4, a1 = a0 + 2.4 * Math.min(1, k * 2.2);
     ctx.globalCompositeOperation = 'lighter';
     ctx.strokeStyle = `rgba(${sk.arc},${0.75 * (1 - k)})`; ctx.lineWidth = this.atkHeavy ? 18 : 10; ctx.lineCap = 'round';
@@ -366,28 +393,30 @@ class Player {
     }
     ctx.fillStyle = tint || core; ctx.fillRect(-1, -19, 4, 4);
     // 肩甲 + 手臂
-    const sw = moving ? Math.sin(ph) * 3 : air ? -2 : 0;
+    const look = !tint && this.lookUp; // 向上瞄准：手臂举起、枪口朝上、头往上抬
+    const sw = look ? 0 : moving ? Math.sin(ph) * 3 : air ? -2 : 0;
     ctx.fillStyle = c.b; ctx.fillRect(-3, -24, 9, 5);
-    ctx.fillStyle = c.a; ctx.fillRect(1 + sw, -19, 4, 8);
-    ctx.fillStyle = c.d; ctx.fillRect(1 + sw, -12, 4, 3);
-    // 手里的枪
-    if (curW === 'flintlock') {
+    if (!look) { ctx.fillStyle = c.a; ctx.fillRect(1 + sw, -19, 4, 8); ctx.fillStyle = c.d; ctx.fillRect(1 + sw, -12, 4, 3); }
+    // 手里的枪（向上瞄准时画在头的前面，见下方）
+    const drawGun = (kick) => {
+      if (look) { ctx.translate(9, -34 + kick); ctx.rotate(-Math.PI / 2); } else { ctx.translate(3 + sw - kick, -11); ctx.rotate(-kick * 0.08); }
+      if (curW === 'flintlock') {
       const kick = Math.max(0, (this.atkCd || 0) - 0.8) * 20;
-      ctx.save(); ctx.translate(3 + sw - kick, -11); ctx.rotate(-kick * 0.08);
-      ctx.fillStyle = '#5a3a20'; ctx.fillRect(-2, -1, 5, 5);            // 握把
-      ctx.fillStyle = '#8a6a36'; ctx.fillRect(0, -3, 5, 3);             // 击锤座
-      ctx.fillStyle = '#6a6e72'; ctx.fillRect(3, -3, 11, 2);            // 枪管
-      ctx.fillStyle = '#c9a030'; ctx.fillRect(12, -3.5, 2, 3);
-      ctx.restore();
-    } else if (curW === 'sporeGun') {
-      ctx.save(); ctx.translate(3 + sw, -11);
-      ctx.fillStyle = '#2a3a44'; ctx.fillRect(-2, -1, 5, 5);
-      ctx.fillStyle = 'rgba(120,240,200,0.85)'; ctx.beginPath(); ctx.ellipse(5, -3, 5, 3.5, 0, 0, 7); ctx.fill(); // 孢子囊
-      ctx.fillStyle = '#8a9aa6'; ctx.fillRect(9, -3.5, 5, 2);
-      ctx.fillStyle = '#c86ab0'; ctx.fillRect(3, -4, 1.5, 1.5);
-      ctx.restore();
-    }
-    // 头
+        ctx.fillStyle = '#5a3a20'; ctx.fillRect(-2, -1, 5, 5);            // 握把
+        ctx.fillStyle = '#8a6a36'; ctx.fillRect(0, -3, 5, 3);             // 击锤座
+        ctx.fillStyle = '#6a6e72'; ctx.fillRect(3, -3, 11, 2);            // 枪管
+        ctx.fillStyle = '#c9a030'; ctx.fillRect(12, -3.5, 2, 3);
+      } else {
+        ctx.fillStyle = '#2a3a44'; ctx.fillRect(-2, -1, 5, 5);
+        ctx.fillStyle = 'rgba(120,240,200,0.85)'; ctx.beginPath(); ctx.ellipse(5, -3, 5, 3.5, 0, 0, 7); ctx.fill(); // 孢子囊
+        ctx.fillStyle = '#8a9aa6'; ctx.fillRect(9, -3.5, 5, 2);
+        ctx.fillStyle = '#c86ab0'; ctx.fillRect(3, -4, 1.5, 1.5);
+      }
+    };
+    const hasGun = curW === 'flintlock' || curW === 'sporeGun';
+    if (hasGun && !look) { ctx.save(); drawGun(Math.max(0, (this.atkCd || 0) - 0.8) * 20); ctx.restore(); }
+    // 头（向上瞄准时绕脖子往上抬）
+    if (look) { ctx.save(); ctx.translate(0, -22); ctx.rotate(-0.4); ctx.translate(0, 22); }
     ctx.fillStyle = c.e; ctx.fillRect(-6, -31, 13, 9);
     ctx.fillStyle = c.b; ctx.fillRect(-6, -31, 13, 2);
     const visor = tint || (this.dashLock > 0 ? '#f44' : c.visor);
@@ -395,6 +424,12 @@ class Player {
     if (!tint) {
       ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = this.dashLock > 0 ? 'rgba(255,60,60,0.35)' : 'rgba(100,255,255,0.3)';
       ctx.fillRect(0, -30, 11, 7); ctx.globalCompositeOperation = 'source-over';
+    }
+    if (look) {
+      ctx.restore();
+      // 举起的手臂：从肩膀伸到脸的前上方
+      ctx.fillStyle = c.a; ctx.fillRect(6, -34, 4, 12); ctx.fillStyle = c.d; ctx.fillRect(6, -37, 4, 3);
+      if (hasGun) { ctx.save(); drawGun(curW === 'flintlock' ? Math.max(0, (this.atkCd || 0) - 0.8) * 20 : 0); ctx.restore(); }
     }
     if (slimed) {
       ctx.fillStyle = 'rgba(140,255,60,0.55)';

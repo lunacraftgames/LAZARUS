@@ -194,6 +194,23 @@ const Sound = (() => {
     ir() { tone({ type: 'sawtooth', f: 2200, f2: 400, dur: 0.1, vol: 0.03 }); },
     mirrorWake() { tone({ type: 'sawtooth', f: 220, f2: 110, dur: 0.35, vol: 0.08, filter: 'lowpass', ff: 1500 }); tone({ type: 'sawtooth', f: 110, f2: 220, dur: 0.35, vol: 0.08, filter: 'lowpass', ff: 1500 }); },
     mirrorHit() { noise({ filter: 'highpass', f: 2500, dur: 0.25, vol: 0.25 }); for (let i = 0; i < 5; i++) tone({ type: 'square', f: rand(300, 3000), dur: 0.04, vol: 0.05, t: i * 0.04 }); },
+    // 第四章
+    gflip() { tone({ type: 'sine', f: 180, f2: 900, dur: 0.35, vol: 0.14, send: 0.5 }); tone({ type: 'sine', f: 900, f2: 180, dur: 0.35, vol: 0.1, t: 0.05 }); noise({ filter: 'bandpass', f: 2000, dur: 0.25, vol: 0.12, q: 2 }); },
+    gwarn() { tone({ type: 'sine', f: 1320, dur: 0.05, vol: 0.05 }); },
+    gswitch() { [72, 79, 84].forEach((n, i) => tone({ type: 'triangle', f: N(n), dur: 0.2, vol: 0.06, t: i * 0.04, send: 0.5 })); },
+    shift() { tone({ type: 'square', f: 60, f2: 1800, dur: 0.25, vol: 0.06, filter: 'lowpass', ff: 3000 }); noise({ filter: 'highpass', f: 4000, dur: 0.3, vol: 0.15 }); },
+    cubeJump() { tone({ type: 'square', f: N(76), f2: N(88), dur: 0.08, vol: 0.05 }); },
+    magShot() { tone({ type: 'square', f: 900, f2: 300, dur: 0.1, vol: 0.05 }); },
+    vector() { tone({ type: 'sine', f: 440, f2: 1320, dur: 0.6, vol: 0.05, send: 0.5 }); },
+    vectorFire() { noise({ filter: 'highpass', f: 3000, dur: 0.25, vol: 0.2 }); tone({ type: 'sawtooth', f: 2400, f2: 600, dur: 0.2, vol: 0.05 }); },
+    ping() { tone({ type: 'sine', f: 1760, dur: 0.12, vol: 0.05, send: 0.6 }); },
+    offline() { for (let i = 0; i < 4; i++) tone({ type: 'square', f: 440 - i * 80, dur: 0.12, vol: 0.08, t: i * 0.1, filter: 'lowpass', ff: 1500 }); noise({ f: 800, dur: 0.5, vol: 0.2 }); },
+    singularity(push) { tone({ type: 'sine', f: push ? 80 : 400, f2: push ? 400 : 60, dur: 0.6, vol: 0.2 }); noise({ filter: 'lowpass', f: 600, dur: 0.6, vol: 0.2 }); },
+    mimicBite() { noise({ f: 2400, f2: 300, dur: 0.12, vol: 0.3 }); tone({ type: 'square', f: 180, f2: 60, dur: 0.15, vol: 0.12 }); },
+    omniCharge() { tone({ type: 'sawtooth', f: 110, f2: 880, dur: 0.9, glide: 0.9, vol: 0.05, attack: 0.6, filter: 'lowpass', ff: 2400 }); },
+    omniLaser() { noise({ f: 5000, f2: 400, dur: 0.5, vol: 0.3 }); tone({ type: 'sawtooth', f: 160, dur: 0.45, vol: 0.12, vib: 30, vibAmt: 20 }); },
+    coreBreak() { [84, 88, 91, 96].forEach((n, i) => tone({ type: 'sine', f: N(n), dur: 0.6, vol: 0.07, t: i * 0.05, send: 0.6 })); noise({ filter: 'highpass', f: 3000, dur: 0.3, vol: 0.2 }); },
+    selfDestruct() { tone({ type: 'square', f: 880, dur: 0.15, vol: 0.1 }); tone({ type: 'sine', f: 60, f2: 40, dur: 0.5, vol: 0.3 }); },
     bossForm() { for (let i = 0; i < 8; i++) tone({ type: 'square', f: 200 + i * 90, dur: 0.05, vol: 0.04, t: i * 0.07, filter: 'lowpass', ff: 2500 }); tone({ type: 'sine', f: 60, f2: 120, dur: 1.2, vol: 0.2, attack: 0.6 }); },
     clear() {
       [69, 72, 76, 81, 84].forEach((n, i) => tone({ type: 'square', f: N(n), dur: 0.14, vol: 0.06, t: i * 0.09, filter: 'lowpass', ff: 3500 }));
@@ -326,6 +343,41 @@ const Sound = (() => {
         const mel = [69, 72, 76, 74, 72, 71, 67, 69], k = Math.floor(s / 2) % 16, idx = k < 8 ? k : 15 - k;
         if (st % 2 === 0 && Math.floor(s / 64) % 4 > 0) tone({ type: 'square', f: N(mel[idx] + (bar % 2 ? 0 : 12)), at, dur: spb * 1.6, vol: 0.03, filter: 'lowpass', ff: 3200, bus, send: 0.3 });
         if (Math.random() < 0.06) tone({ type: 'square', f: rand(200, 3000), at, dur: 0.03, vol: 0.02, bus });
+      },
+    },
+    // 第四章：至高神座——冷、空、神圣：长音和弦 + 钟声
+    core: {
+      bpm: 76,
+      step(s, at, bus, spb) {
+        const chords = [[60, 64, 67, 71], [57, 60, 64, 67], [53, 57, 60, 64], [55, 59, 62, 67]];
+        const bar = Math.floor(s / 16) % 4, st = s % 16, ch = chords[bar];
+        if (st === 0) for (const n of ch) { tone({ type: 'sine', f: N(n), at, dur: spb * 17, vol: 0.03, attack: spb * 6, bus, send: 0.5 }); tone({ type: 'triangle', f: N(n + 12), at, dur: spb * 17, vol: 0.008, attack: spb * 8, bus }); }
+        if (st === 0 || st === 8) tone({ type: 'triangle', f: N(ch[0] - 24), at, dur: spb * 8, vol: 0.12, bus });
+        if (st % 4 === 0 && Math.floor(s / 64) % 2 === 1) tone({ type: 'sine', f: N(ch[(st / 4) % 4] + 24), at, dur: 1.8, vol: 0.035, bus, send: 0.8 });
+        if (st === 12 && bar % 2 === 1) noise({ filter: 'highpass', f: 6000, dur: 0.3, vol: 0.02, at, bus });
+      },
+    },
+    // 万脑：管风琴般的厚和弦 + 重拍
+    omni: {
+      bpm: 128,
+      step(s, at, bus, spb) {
+        const roots = [45, 41, 43, 40], bar = Math.floor(s / 16) % 4, st = s % 16, r = roots[bar];
+        if (st % 4 === 0) tone({ type: 'sine', f: 120, f2: 40, at, dur: 0.25, vol: 0.4, bus });
+        if (st === 4 || st === 12) noise({ filter: 'bandpass', f: 2000, dur: 0.12, vol: 0.16, at, bus });
+        if (st % 2 === 1) noise({ filter: 'highpass', f: 9000, dur: 0.02, vol: 0.03, at, bus });
+        if (st === 0) for (const n of [r, r + 7, r + 12, r + 15, r + 19]) tone({ type: 'sawtooth', f: N(n), at, dur: spb * 16, vol: 0.018, attack: spb * 2, filter: 'lowpass', ff: 1400, bus, send: 0.3 });
+        tone({ type: 'square', f: N(r - 12 + (st % 4 === 2 ? 12 : 0)), at, dur: spb * 0.8, vol: 0.05, filter: 'lowpass', ff: 900, bus });
+        const mel = [69, 72, 76, 81, 79, 76, 72, 74];
+        if (Math.floor(s / 64) % 2 === 1 && st % 2 === 0) tone({ type: 'square', f: N(mel[(st / 2) % 8] + (bar === 3 ? 2 : 0)), at, dur: spb * 1.6, vol: 0.03, filter: 'lowpass', ff: 3000, bus, send: 0.3 });
+      },
+    },
+    // 终局：死寂的黑暗，只剩低鸣和心跳
+    void: {
+      bpm: 60,
+      step(s, at, bus, spb) {
+        if (s % 32 === 0) tone({ type: 'sine', f: N(33), at, dur: spb * 34, vol: 0.12, attack: 2, bus });
+        if (s % 16 === 0 || s % 16 === 3) tone({ type: 'sine', f: 60, f2: 36, at, dur: 0.2, vol: 0.25, bus });
+        if (s % 64 === 40) tone({ type: 'sine', f: N(81), at, dur: 3, vol: 0.04, bus, send: 0.9 });
       },
     },
     museum: makeMuseum(80, true),

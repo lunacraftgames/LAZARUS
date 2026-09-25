@@ -2,12 +2,14 @@
 // 基于跳跃包络（高 3 格 / 远 4~7 格，冲刺 +3 格，弹床 +9 格高）在瓦片网格上做 BFS，
 // 第二章起：二段跳（高 6 格）、培养液（可自由上浮，出水跳 3 格）、反弹软体怪（踩头 +8 格高）。
 // 第三章：代码门视为已打开（机关谜题需要手动验证），逻辑地雷下的平台视为存在。
+// 第四章：同时考虑正常站立和倒立在天花板上两种状态；有重力周期的关卡任何位置都能翻转，只有重力开关的关卡只能在开关处翻转。
+//        一键模式区域按普通跳跃计算（障碍都设计成跳得过去）。
 // 只用于发现“明显无法到达出口”的设计错误；不模拟敌人、激光、时序，结果仅供参考。
 const fs = require('fs'), vm = require('vm'), path = require('path');
 const ctx = {}; vm.createContext(ctx);
 // 只需要地图数据：其余依赖用空壳代替
-vm.runInContext('var TILESETS={},PROP_FACTORIES={},PICKUP_INFO={},Inventory={ability:()=>false};function makeEnemy(){}', ctx);
-const src = ['levels.js', 'chapter2.js', 'chapter3.js'].map((f) => fs.readFileSync(path.join(__dirname, '../js', f), 'utf8')).join('\n');
+vm.runInContext('var TILESETS={},PROP_FACTORIES={},PICKUP_INFO={},Inventory={ability:()=>false};function makeEnemy(){};function Player(){}', ctx);
+const src = ['levels.js', 'chapter2.js', 'chapter3.js', 'chapter4.js'].map((f) => fs.readFileSync(path.join(__dirname, '../js', f), 'utf8')).join('\n');
 vm.runInContext(src + '\nthis.LEVELS=LEVELS;this.makeBuilder=makeBuilder;', ctx);
 const SOLID = '#=', ONE = '-C', BLOCK = SOLID + ONE;
 const H = { 3: 4, 2: 5, 1: 6, 0: 7 };
@@ -26,6 +28,7 @@ for (const L of ctx.LEVELS) {
   }
   for (const [x, y] of moverCells) support.add(x + ',' + y);
   const ch = parseInt(L.id, 10), dj = ch >= 2;
+  if (ch >= 4) { if (L.boss) { console.log(`${L.id} ${L.name}: Boss 关，跳过`); continue; } const ok = reach4(L, g, t, solid); if (!ok) bad++; console.log(`${L.id} ${L.name}: 含重力翻转${ok ? '可达' : '【不可达！】'}`); continue; }
   const wet = (x, y) => !!(B.water && B.water[y] && B.water[y][x]);
   const stand = (x, y) => !solid(x, y) && !solid(x, y - 1) && t(x, y) !== '^' && (BLOCK.includes(t(x, y + 1)) || support.has(x + ',' + (y + 1)) || wet(x, y) || t(x, y + 1) === 'u');
   let S = null, E = null;
@@ -64,5 +67,43 @@ for (const L of ctx.LEVELS) {
   const a = reach(false), b = reach(true);
   if (!b) bad++;
   console.log(`${L.id} ${L.name}: 不冲刺${a ? '可达' : '不可达'} · 含冲刺${b ? '可达' : '【不可达！】'}`);
+}
+// 第四章：节点 = (x, y, 朝向)，朝向 0 = 站在地面上，1 = 倒立站在天花板下
+function reach4(L, g, t, solid) {
+  const standN = (x, y) => !solid(x, y) && !solid(x, y - 1) && t(x, y) !== '^' && BLOCK.includes(t(x, y + 1));
+  const standI = (x, y) => !solid(x, y) && !solid(x, y + 1) && t(x, y) !== 'v' && solid(x, y - 1);
+  const switches = []; let S = null, E = null;
+  for (let y = 0; y < L.h; y++) for (let x = 0; x < L.w; x++) { const c = g[y][x]; if (c === 'G') switches.push([x, y]); if (c === 'S') S = [x, y, 0]; if (c === 'E') E = [x, y, 0]; }
+  const anyFlip = !!L.gcycle;
+  const canFlipAt = (x, y) => anyFlip || switches.some(([sx, sy]) => Math.abs(sx - x) <= 1 && Math.abs(sy - y) <= 1);
+  const nodes = [];
+  for (let y = 0; y < L.h; y++) for (let x = 0; x < L.w; x++) { if (standN(x, y)) nodes.push([x, y, 0]); if (standI(x, y)) nodes.push([x, y, 1]); }
+  // o = 1 时把地图上下镜像，复用同一套跳跃规则
+  const clearO = (x1, y1, x2, y2, o) => {
+    const up = o ? 1 : -1, top = (o ? Math.max(y1, y2) : Math.min(y1, y2)) + up, lo = Math.min(x1, x2), hi = Math.max(x1, x2);
+    for (let x = lo + 1; x < hi; x++) if (solid(x, top) || solid(x, o ? Math.max(y1, y2) : Math.min(y1, y2))) return false;
+    for (let y = y1; o ? y <= top : y >= top; y += up) if (solid(x1, y)) return false;
+    return true;
+  };
+  const colClear = (x, ya, yb) => { for (let y = Math.min(ya, yb) + 1; y < Math.max(ya, yb); y++) if (solid(x, y)) return false; return true; };
+  const key = (n) => n.join(',');
+  const seen = new Set([key(S)]), q = [S];
+  while (q.length) {
+    const [x, y, o] = q.shift();
+    for (const n of nodes) {
+      const [x2, y2, o2] = n, k = key(n); if (seen.has(k)) continue;
+      const dx = Math.abs(x2 - x); let ok = false;
+      if (o2 === o) {
+        const dy = o ? y2 - y : y - y2; // 本地坐标里的上升高度
+        if (dy > 3 && dy <= 6) ok = dx <= 5 + 3; else if (dy > 6) ok = false; else if (dy >= 0) ok = dx <= H[dy] + 3 + 3; else ok = dx <= 7 + Math.min(4, -dy) + 3;
+        if (ok && dy <= 3 && !clearO(x, y, x2, y2, o)) ok = false;
+      } else if (canFlipAt(x, y)) {
+        // 重力翻转：朝反方向「掉」过去，途中还能横向漂移几格
+        ok = (o === 0 ? y2 < y : y2 > y) && dx <= 6 && colClear(x, y, y2) && colClear(x2, y, y2);
+      }
+      if (ok) { seen.add(k); q.push(n); }
+    }
+  }
+  return seen.has(key(E));
 }
 process.exit(bad ? 1 : 0);

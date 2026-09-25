@@ -91,7 +91,8 @@ const Input = {
     if (b && b.keys && !b.keys.swap) keys.swap = keys.swap.map((c) => (c && Object.keys(keys).some((x) => x !== 'swap' && keys[x].includes(c)) ? null : c));
     if (b && b.pad && !b.pad.swap) pad.swap = pad.swap.filter((btn) => !PAD_REBINDABLE.some((x) => x !== 'swap' && pad[x].includes(btn)));
     if (!pad.swap.length) pad.swap = [11];
-    this.binds = { keys, pad, upJump: b && typeof b.upJump === 'boolean' ? b.upJump : true };
+    // 「向上」键默认只用来瞄准，不再兼作跳跃；v2 之前的存档里这个开关是旧默认值（开），统一改回关
+    this.binds = { v: 2, keys, pad, upJump: b && b.v >= 2 && typeof b.upJump === 'boolean' ? b.upJump : false };
     this.rebuild();
   },
   saveBinds() { try { localStorage.setItem('lazarus_binds', JSON.stringify(this.binds)); } catch (e) { /* ignore */ } this.rebuild(); },

@@ -103,15 +103,16 @@ Object.assign(Game, {
   // 远程武器开火
   fireWeapon(p, k, dir) {
     const f = p.facing, sy = p.y + p.h - 15;
-    const base = dir === 'up' ? { x: 0, y: -1 } : dir === 'down' ? { x: 0, y: 1 } : { x: f, y: 0 };
+    const gd = p.gd || 1; // 重力反转时「上 / 下」跟着翻转
+    const base = dir === 'up' ? { x: 0, y: -gd } : dir === 'down' ? { x: 0, y: gd } : { x: f, y: 0 };
     const mx = p.cx + base.x * 16, my = (dir === 'side' ? sy : p.cy) + base.y * 16;
     if (k === 'flintlock') {
       this.pshots.push(new PShot({ type: 'bullet', x: mx, y: my, vx: base.x * 1150, vy: base.y * 1150, r: 4, life: 0.6, kind: 'shot' }));
       Sound.sfx.gunshot(); this.shake(3); Input.rumble(0.3, 0.3, 70);
       // 后坐力：朝反方向推自己
       if (dir === 'side') p.vx -= f * (p.onGround ? 230 : 420);
-      else if (dir === 'down') { p.vy = Math.min(p.vy, -520); p.jumping = false; }
-      else if (dir === 'up' && !p.onGround) p.vy = Math.max(p.vy, 160);
+      else if (dir === 'down') { p.vy = gd > 0 ? Math.min(p.vy, -520) : Math.max(p.vy, 520); p.jumping = false; }
+      else if (dir === 'up' && !p.onGround) p.vy = gd > 0 ? Math.max(p.vy, 160) : Math.min(p.vy, -160);
       this.particles.burst(mx, my, 8, { color: ['#fff3c0', '#ffb040', '#fff'], shape: 'spark', smin: 60, smax: 260, lmin: 0.08, lmax: 0.2, add: true });
       this.particles.burst(mx, my, 5, { color: ['rgba(150,150,150,0.5)'], shape: 'glow', smin: 10, smax: 50, lmin: 0.4, lmax: 0.8, grow: 10, szmin: 4, szmax: 6 });
       setTimeout(() => { if (Inventory.weapon() === 'flintlock') Sound.sfx.reload(); }, 820);
