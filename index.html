@@ -13,8 +13,14 @@
         background: rgba(255,255,255,.07); border: 2px solid rgba(140,255,230,.35); color: rgba(200,255,240,.85);
         font: bold 15px "Microsoft YaHei","PingFang SC",sans-serif; display: flex; align-items: center; justify-content: center; }
   .tb.on { background: rgba(140,255,230,.25); }
-  #tl { left: 22px; bottom: 26px; } #tr { left: 112px; bottom: 26px; }
-  #td { left: 67px; bottom: 108px; width: 60px; height: 60px; font-size: 13px; }
+  /* 十字方向键：四个键同样大小；箭头用 CSS 三角形绘制（iOS 会把 ◀ ▶ 字符渲染成彩色 emoji） */
+  .dp { width: 56px; height: 56px; box-sizing: border-box; }
+  .dp::before { content: ''; width: 0; height: 0; border: 11px solid transparent; }
+  #tu::before { border-bottom: 16px solid rgba(200,255,240,.85); border-top-width: 0; margin-top: -4px; }
+  #td::before { border-top: 16px solid rgba(200,255,240,.85); border-bottom-width: 0; margin-top: 4px; }
+  #tl::before { border-right: 16px solid rgba(200,255,240,.85); border-left-width: 0; margin-left: -4px; }
+  #tr::before { border-left: 16px solid rgba(200,255,240,.85); border-right-width: 0; margin-left: 4px; }
+  #tu { left: 68px; bottom: 130px; } #tl { left: 10px; bottom: 72px; } #tr { left: 126px; bottom: 72px; } #td { left: 68px; bottom: 14px; }
   #tj { right: 24px; bottom: 30px; width: 88px; height: 88px; } #tx { right: 124px; bottom: 60px; }
   #ta { right: 44px; bottom: 132px; width: 60px; height: 60px; font-size: 13px; }
   #tw { right: 132px; bottom: 150px; width: 52px; height: 52px; font-size: 12px; }
@@ -24,9 +30,10 @@
 <body>
 <div id="wrap"><canvas id="game" width="960" height="540"></canvas></div>
 <div id="touch">
-  <div class="tb" id="tl" data-act="left">◀</div>
-  <div class="tb" id="tr" data-act="right">▶</div>
-  <div class="tb" id="td" data-act="down">▼</div>
+  <div class="tb dp" id="tu" data-act="up"></div>
+  <div class="tb dp" id="tl" data-act="left"></div>
+  <div class="tb dp" id="tr" data-act="right"></div>
+  <div class="tb dp" id="td" data-act="down"></div>
   <div class="tb" id="tj" data-act="jump,confirm">跳跃</div>
   <div class="tb" id="tx" data-act="dash">冲刺</div>
   <div class="tb" id="ta" data-act="attack">攻击</div>
