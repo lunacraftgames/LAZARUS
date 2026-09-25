@@ -39,8 +39,9 @@ class Player {
       atkT: 0, atkCd: 0, atkDown: false, atkHits: new Set(), atkSwing: 0, chargeT: -1, atkHeavy: false,
       jumpsLeft: 1, slimeT: 0, inWater: false, swimCd: 0,
       lockT: 0, lockImmune: 0, lagT: 0, lagBuf: [], lagOut: null, ctl: {},
-      gd: 1, prevTop: y, cubeRot: 0, frozen: false, lookUp: false, lookT: 0, atkUp: false,
-      h: PL.H, crouch: false, // 下蹲：碰撞箱高度减半 // 第四章：重力方向（1 正常 / -1 反转）、一键模式、终局冻结
+      gd: 1, prevTop: y, cubeRot: 0, frozen: false, // 第四章：重力方向（1 正常 / -1 反转）、一键模式、终局冻结
+      lookUp: false, lookT: 0, atkUp: false,         // 向上瞄准
+      h: PL.H, crouch: false,                        // 下蹲：碰撞箱高度减半
     });
   }
   hurt() { const t = this.crouch ? 3 : 6; return { x: this.x + 4, y: this.y + t, w: this.w - 8, h: this.h - t - 2 }; }
