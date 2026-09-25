@@ -207,7 +207,7 @@ class MatrixCtl {
   }
   // 冲刺时调用：在冲刺起点留下残影
   spawnEcho(p, g) {
-    this.echoes.push({ x: p.x, y: p.y, f: p.facing, og: p.onGround, t: 0, life: PL3.ECHO_LIFE });
+    this.echoes.push({ x: p.x, y: p.y + p.h - 28, f: p.facing, og: p.onGround, t: 0, life: PL3.ECHO_LIFE }); // 残影总是站立高度
     if (this.echoes.length > PL3.ECHO_MAX) this.echoes.shift();
     Sound.sfx.echo();
     g.particles.burst(p.cx, p.cy, 10, { color: ['#2f9', '#bfe', '#fff'], smin: 30, smax: 120, lmin: 0.2, lmax: 0.45, add: true, szmin: 1.5, szmax: 3 });

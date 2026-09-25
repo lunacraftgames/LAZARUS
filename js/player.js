@@ -11,6 +11,7 @@ const PL = {
   DJUMP: 640,            // 二段跳（推进囊）
   SLIME_T: 3,            // 粘液：持续 3 秒，跳跃高度减半且不能二段跳
   WATER: { GRAV: 780, MAXFALL: 230, RUN: 190, ACC: 650, DEC: 150, SWIM: 420, SWIM_CD: 0.22, EXIT: 660 }, // 高密度培养液：低重力、惯性大
+  H: 28, CROUCH_H: 14, CROUCH_RUN: 0.4, // 站立 / 下蹲高度，下蹲移动速度倍率
   // 第三章
   LAG: 0.5,              // 掉帧幽灵：输入延迟 0.5 秒
 };
@@ -28,7 +29,7 @@ const WPN = {
 const HEAVY = { active: 0.16, cd: 0.45, swing: 0.26, reach: 92, arc: 62 };
 
 class Player {
-  constructor(x, y) { this.w = 20; this.h = 28; this.reset(x, y); }
+  constructor(x, y) { this.w = 20; this.h = PL.H; this.reset(x, y); }
   reset(x, y) {
     Object.assign(this, {
       x, y, vx: 0, vy: 0, onGround: false, ground: null, groundOneWay: false,
@@ -38,10 +39,21 @@ class Player {
       atkT: 0, atkCd: 0, atkDown: false, atkHits: new Set(), atkSwing: 0, chargeT: -1, atkHeavy: false,
       jumpsLeft: 1, slimeT: 0, inWater: false, swimCd: 0,
       lockT: 0, lockImmune: 0, lagT: 0, lagBuf: [], lagOut: null, ctl: {},
-      gd: 1, prevTop: y, cubeRot: 0, frozen: false, lookUp: false, lookT: 0, atkUp: false, // 第四章：重力方向（1 正常 / -1 反转）、一键模式、终局冻结
+      gd: 1, prevTop: y, cubeRot: 0, frozen: false, lookUp: false, lookT: 0, atkUp: false,
+      h: PL.H, crouch: false, // 下蹲：碰撞箱高度减半 // 第四章：重力方向（1 正常 / -1 反转）、一键模式、终局冻结
     });
   }
-  hurt() { return { x: this.x + 4, y: this.y + 6, w: this.w - 8, h: this.h - 8 }; }
+  hurt() { const t = this.crouch ? 3 : 6; return { x: this.x + 4, y: this.y + t, w: this.w - 8, h: this.h - t - 2 }; }
+  // 改变身高（下蹲 / 起身），脚的位置保持不变；重力反转时脚在上方
+  setHeight(h) { if (this.gd > 0) this.y += this.h - h; this.h = h; }
+  // 起身前检查头顶有没有空间
+  roomToStand(W) {
+    const r = { x: this.x, y: this.gd > 0 ? this.y + this.h - PL.H : this.y, w: this.w, h: PL.H };
+    for (let cy = Math.floor(r.y / TILE); cy <= Math.floor((r.y + r.h - 0.001) / TILE); cy++)
+      for (let cx = Math.floor(r.x / TILE); cx <= Math.floor((r.x + r.w - 0.001) / TILE); cx++) if (W.solidAt(cx, cy)) return false;
+    for (const s of W.solids) if (s.active && !s.oneWay && s.owner !== this && overlap(r, s)) return false;
+    return true;
+  }
   attackBox() {
     if (this.atkT <= 0) return null;
     const W = this.atkHeavy ? HEAVY : WPN[Inventory.weapon()];
@@ -101,7 +113,12 @@ class Player {
     // ---- 第四章：重力方向。下面的物理全部在「本地坐标」里计算（vy > 0 = 朝自己脚下），最后再换回世界坐标 ----
     const gd = g.core ? g.core.gd : 1;
     if (gd !== this.gd) { this.gd = gd; this.onGround = false; this.coyote = 0; this.jumping = false; this.jumpsLeft = 1; }
-    if (g.core && g.core.mode === 'cube') return this.updateCube(dt, g, I, ctl);
+    // ---- 下蹲：站在地上按住 ↓；松开后头顶有空间才会站起来 ----
+    const cube = g.core && g.core.mode === 'cube';
+    const wantCrouch = this.onGround && !this.inWater && !cube && I.down('down') && !I.down('up') && this.dashT <= 0;
+    if (wantCrouch && !this.crouch) { this.crouch = true; this.setHeight(PL.CROUCH_H); }
+    else if (!wantCrouch && this.crouch && (cube || this.roomToStand(W))) { this.crouch = false; this.setHeight(PL.H); }
+    if (cube) return this.updateCube(dt, g, I, ctl);
     this.vy *= gd;
     const footY = gd > 0 ? this.y + this.h + 1 : this.y - 1;
     if (I.hit('jump')) this.jumpBuf = PL.BUFFER; else this.jumpBuf -= dt;
@@ -119,7 +136,7 @@ class Player {
     if (I.hit('dash')) {
       if (this.dashLock > 0) { Sound.sfx.denied(); g.hudDeny = 0.6; Input.rumble(0.3, 0, 120); }
       else if (this.canDash && this.dashCd <= 0) {
-        let dx = mx, dy = I.down('down') ? 1 : 0; // 「向上」只用来瞄准，不会向上冲刺
+        let dx = mx, dy = (I.down('down') ? 1 : 0) - (I.down('up') ? 1 : 0); // 同时按住「向上」+ 冲刺 = 向上冲刺
         if (this.onGround && dy > 0) dy = 0;
         if (!dx && !dy) dx = this.facing;
         const l = Math.hypot(dx, dy);
@@ -202,7 +219,7 @@ class Player {
       }
       if (Math.random() < 0.06) g.particles.add({ x: this.cx + rand(-4, 4), y: this.y + 4, vx: rand(-10, 10), vy: rand(-50, -30), life: 1, size: 2, color: 'rgba(180,240,255,0.7)', shape: 'ring' });
     } else {
-      const target = mx * PL.RUN;
+      const target = mx * PL.RUN * (this.crouch && this.onGround ? PL.CROUCH_RUN : 1);
       let acc = this.onGround ? (mx ? PL.ACC_G : PL.DEC_G) : (mx ? PL.ACC_A : PL.DEC_A);
       const wire = g.core && g.core.mode === 'wire'; // 第四章线框视界：没有惯性，起跳高度固定
       // 空中顺着方向时保留冲刺带来的额外速度（手感更宽容）
@@ -344,6 +361,8 @@ class Player {
     const c = tint ? { a: tint, b: tint, d: tint, e: tint, k: tint, pack: tint, stripe: tint, visor: tint } : paint.pal;
     const slimed = !tint && this.slimeT > 0;
     if (paint && paint.glitch && Math.random() < 0.04) ctx.translate(rand(-3, 3), 0);
+    const cr = this.crouch ? 11 : 0; // 下蹲：上半身整体下沉
+    if (cr) ctx.translate(0, cr);
     // 背上的残刃（已解锁时）
     const curW = !tint && this.hasBlade !== false ? Inventory.weapon() : null;
     if (curW && WPN[curW].melee && !(this.atkSwing > 0)) {
@@ -363,13 +382,20 @@ class Player {
       ctx.fillStyle = radio ? ((t * 8) % 2 < 1 ? '#6f6' : '#262') : ((t * 1.5) % 2 < 0.2 ? '#f55' : '#522');
       ctx.fillRect(-14.5, -38, 3, 3);
     }
-    // 腿
+    // 腿（下蹲时画成弯曲的短腿，坐标要减去上半身的下沉量）
+    if (cr) {
+      ctx.fillStyle = c.a; ctx.fillRect(-8, -7 - cr, 7, 5); ctx.fillRect(1, -7 - cr, 7, 5);
+      ctx.fillStyle = c.k; ctx.fillRect(-3, -7 - cr, 3, 3); ctx.fillRect(6, -7 - cr, 3, 3);
+      ctx.fillStyle = c.d; ctx.fillRect(-9, -2 - cr, 8, 2); ctx.fillRect(0, -2 - cr, 9, 2);
+    }
     let l1x = -6, l2x = 1, l1y = 0, l2y = 0;
     if (moving) { l1x += Math.sin(ph) * 4; l2x -= Math.sin(ph) * 4; l1y = -Math.max(0, Math.cos(ph)) * 3; l2y = -Math.max(0, -Math.cos(ph)) * 3; }
     else if (air) { l1x = -7; l2x = 3; l1y = -3; l2y = -1; }
-    ctx.fillStyle = c.a; ctx.fillRect(l1x, -11 + l1y, 5, 10); ctx.fillRect(l2x, -11 + l2y, 5, 10);
-    ctx.fillStyle = c.k; ctx.fillRect(l1x, -8 + l1y, 5, 3); ctx.fillRect(l2x, -8 + l2y, 5, 3);
-    ctx.fillStyle = c.d; ctx.fillRect(l1x - 1, -2 + l1y, 7, 3); ctx.fillRect(l2x - 1, -2 + l2y, 8, 3);
+    if (!cr) {
+      ctx.fillStyle = c.a; ctx.fillRect(l1x, -11 + l1y, 5, 10); ctx.fillRect(l2x, -11 + l2y, 5, 10);
+      ctx.fillStyle = c.k; ctx.fillRect(l1x, -8 + l1y, 5, 3); ctx.fillRect(l2x, -8 + l2y, 5, 3);
+      ctx.fillStyle = c.d; ctx.fillRect(l1x - 1, -2 + l1y, 7, 3); ctx.fillRect(l2x - 1, -2 + l2y, 8, 3);
+    }
     // 躯干
     const bob = moving ? Math.abs(Math.sin(ph)) * -1 : 0;
     ctx.translate(0, bob);
