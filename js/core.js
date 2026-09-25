@@ -3,7 +3,7 @@
 //  LAZARUS · 核心工具 / 物理世界 / 粒子
 // ============================================================
 const TILE = 32, VW = 960, VH = 540;
-const BUILD = '20260925-8'; // 版本号，显示在标题界面右下角；与 index.html 里脚本的 ?v= 保持一致
+const BUILD = '20260925-9'; // 版本号，显示在标题界面右下角；与 index.html 里脚本的 ?v= 保持一致
 const GRAV = 2100, MAXFALL = 820;
 const FONT = '"Microsoft YaHei","PingFang SC","Hiragino Sans GB","Noto Sans SC","Source Han Sans SC",sans-serif';
 const MONO = 'Consolas,"Courier New",monospace';
