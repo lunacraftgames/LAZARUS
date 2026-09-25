@@ -358,12 +358,12 @@ const Game = {
     this.particles.burst(this.player.cx, this.player.cy, 40, { color: ['#fc6', '#fff', '#fa4'], smin: 80, smax: 360, lmin: 0.5, lmax: 1.2, add: true });
     Input.rumble(1, 1, 500);
     const T = {
-      dashStrike: ['获得能力 · 冲撞模块', '{dash} 冲刺撞到的普通敌人会被击碎，并立即恢复冲刺（看守者的盾牌除外）。账号绑定，不可交易。', RADIO.dashGet],
-      sabre: ['获得武器 · 仪仗军刀', '{attack} 挥砍；空中按住 ↓ 再挥砍可下劈弹跳；可以劈开炸弹。账号绑定，不可交易。', RADIO.sabreGet],
-      flintlock: ['获得武器 · 古董燧发枪', '远程武器：{attack} 开枪，一发一装填。按住 ↑ 朝上打，空中按住 ↓ 朝下打。后坐力会把你往后推。{swap} 切换武器。账号绑定，不可交易。', RADIO.gunGet],
-      sporeGun: ['获得武器 · 生物孢子枪', '一次喷出三颗扇形孢子，落地留下孢子云腐蚀敌人，无视盾牌。{swap} 切换武器。账号绑定，不可交易。', RADIO.sporeGet],
-      doubleJump: ['获得能力 · 推进囊', '空中再按 {jump} 二段跳；被粘液粘住时无法使用。账号绑定，不可交易。', RADIO.djGet],
-      relicBlade: ['获得武器 · 巨像残刃', '挥得慢但距离长，能劈开看守者的盾牌；按住 {attack} 蓄力再松开 = 重劈，地面上还会放出冲击波。{swap} 可以切回仪仗军刀。账号绑定，不可交易。', RADIO.bladeGet],
+      dashStrike: ['获得能力 · 冲撞模块', '{dash} 冲刺撞到的普通敌人会被击碎，并立即恢复冲刺（看守者的盾牌除外）。', RADIO.dashGet],
+      sabre: ['获得武器 · 仪仗军刀', '{attack} 挥砍；空中按住 ↓ 再挥砍可下劈弹跳；可以劈开炸弹。', RADIO.sabreGet],
+      flintlock: ['获得武器 · 古董燧发枪', '远程武器：{attack} 开枪，一发一装填。按住 ↑ 朝上打，空中按住 ↓ 朝下打。后坐力会把你往后推。{swap} 切换武器。', RADIO.gunGet],
+      sporeGun: ['获得武器 · 生物孢子枪', '一次喷出三颗扇形孢子，落地留下孢子云腐蚀敌人，无视盾牌。{swap} 切换武器。', RADIO.sporeGet],
+      doubleJump: ['获得能力 · 推进囊', '空中再按 {jump} 二段跳；被粘液粘住时无法使用。', RADIO.djGet],
+      relicBlade: ['获得武器 · 巨像残刃', '挥得慢但距离长，能劈开看守者的盾牌；按住 {attack} 蓄力再松开 = 重劈，地面上还会放出冲击波。{swap} 可以切回仪仗军刀。', RADIO.bladeGet],
     }[key];
     this.toast(T[0], Input.fmt(T[1]));
     this.say(T[2]);
@@ -375,7 +375,7 @@ const Game = {
     const r = RARITY[d.rarity];
     Sound.sfx.drop(d.rarity);
     if (d.rarity === 'legendary') { this.flash(0.5, '#ffd070'); Input.rumble(0.5, 0.6, 350); }
-    this.toasts.push({ title: `${d.tradable ? '掉落' : '获得'} · ${r.name} · ${d.name}`, text: `${tr(SLOTS.find((x) => x.key === d.slot).name)} · ${tr('来自「%{src}」', { src: tr(src) })} · ${tr(d.tradable ? '可交易 · 可上架 Steam 市场' : '账号绑定')}`, t: 0, color: r.color, drop: true });
+    this.toasts.push({ title: `${d.drop ? '掉落' : '获得'} · ${r.name} · ${d.name}`, text: `${tr(SLOTS.find((x) => x.key === d.slot).name)} · ${tr('来自「%{src}」', { src: tr(src) })}`, t: 0, color: r.color, drop: true });
   },
   // 武器 / 冲撞 命中处理：返回 'kill' | 'block' | 'cut'
   // kind：blade 挥砍 | heavy 重劈/冲击波 | dash 冲撞 | shot 子弹/弹反 | spore 孢子；src = 攻击来源位置（远程攻击用）
