@@ -54,6 +54,7 @@ class Player {
       cling: null, clingCd: 0,                       // 小扫：贴墙 / 倒挂
       fuel: this.C.fuel || 0, jetOn: false, slamming: false, stompCd: 0, // 阿特拉斯：喷气燃料、地面猛击
       invulnT: 0, hist: null, rewindCd: 0, blinkFx: null,               // 赤影：闪现无敌、回溯记录
+      hook: null, hookCd: 0, hookFx: null, gliding: false,             // 信使：抓钩、滑翔
     });
   }
   hurt() { const t = this.crouch ? 3 : 6; return { x: this.x + 4, y: this.y + t, w: this.w - 8, h: this.h - t - 2 }; }
@@ -134,7 +135,7 @@ class Player {
     const wantCrouch = !this.C.noCrouch && this.onGround && !this.inWater && !cube && I.down('down') && !I.down('up') && this.dashT <= 0;
     if (wantCrouch && !this.crouch) { this.crouch = true; this.setHeight(PL.CROUCH_H); }
     else if (!wantCrouch && this.crouch && (cube || this.roomToStand(W))) { this.crouch = false; this.setHeight(PL.H); }
-    if (cube) { this.cling = null; this.slamming = false; this.jetOn = false; return this.updateCube(dt, g, I, ctl); }
+    if (cube) { this.cling = null; this.slamming = false; this.jetOn = false; this.hook = null; this.gliding = false; return this.updateCube(dt, g, I, ctl); }
     this.clingCd -= dt;
     this.vy *= gd;
     const footY = gd > 0 ? this.y + this.h + 1 : this.y - 1;
@@ -152,6 +153,7 @@ class Player {
     // ---- 冲刺（阿特拉斯：空中 = 地面猛击，地上 = 液压踏地）----
     if (this.C.jet && I.hit('dash')) this.atlasDash(g, I, ctl);
     else if (this.C.blink && I.hit('dash')) this.vesperBlink(g, I, ctl); // 赤影：相位闪现
+    else if (this.C.grapple && I.hit('dash')) this.evaFire(g, I, ctl);   // 信使：抓钩
     else if (I.hit('dash')) {
       if (this.dashLock > 0) { Sound.sfx.denied(); g.hudDeny = 0.6; Input.rumble(0.3, 0, 120); }
       else if (this.canDash && this.dashCd <= 0) {
@@ -247,7 +249,8 @@ class Player {
       // 空中顺着方向时保留冲刺带来的额外速度（手感更宽容）
       if (!this.onGround && mx && Math.sign(this.vx) === mx && Math.abs(this.vx) > K.RUN) acc = 380;
       if (wire) acc = 1e5;
-      this.vx = approach(this.vx, target, acc * dt);
+      if (this.hook) this.vx = clamp(this.vx + mx * 700 * dt, -760, 760); // 信使挂在绳子上：← → 荡秋千
+      else this.vx = approach(this.vx, target, acc * dt);
       if (mx) this.facing = mx;
       let grav = GRAV;
       if (this.jumping && I.down('jump') && Math.abs(this.vy) < 100) grav *= 0.5;
@@ -255,6 +258,7 @@ class Player {
       if (this.jumping && !I.down('jump') && this.vy < -220 && !wire) { this.vy *= 0.48; this.jumping = false; }
       if (this.vy >= 0) this.jumping = false;
       if (this.C.jet) this.updateJet(dt, g, I); // 阿特拉斯：喷气悬停 / 地面猛击
+      if (this.C.grapple) this.evaAir(dt, g, I, ctl); // 信使：收放绳子 / 松手 / 滑翔
       if (this.jumpBuf > 0 && this.coyote > 0) {
         this.jumpBuf = 0; this.coyote = 0;
         if (this.onGround && this.groundOneWay && I.down('down')) { this.dropT = 0.22; this.onGround = false; }
@@ -303,6 +307,7 @@ class Player {
     if (this.C.crawl && wasGround && !this.onGround && this.vy >= 0 && I.down('down') && this.dashT <= 0 && this.tryLedgeWrap(g, mx || this.facing)) return this.clingAnim(dt);
     this.airT = this.onGround ? 0 : this.airT + dt;
     this.vy *= gd; // 换回世界坐标
+    if (this.C.grapple) this.evaRope(dt, g); // 信使：绳子约束
 
     // ---- 动画 ----
     this.sx = approach(this.sx, 1, dt * 3.5); this.sy = approach(this.sy, 1, dt * 3.5);
@@ -314,6 +319,7 @@ class Player {
   // 重力反转时整个身体上下翻转
   draw(ctx, g) {
     const flip = this.gd < 0;
+    if (this.C.grapple) this.drawRope(ctx, g);
     if (flip) { ctx.save(); ctx.translate(0, 2 * this.cy); ctx.scale(1, -1); }
     this.drawMain(ctx, g);
     if (flip) ctx.restore();

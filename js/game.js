@@ -381,6 +381,7 @@ const Game = {
   // kind：blade 挥砍 | heavy 重劈/冲击波 | dash 冲撞 | shot 子弹/弹反 | spore 孢子；src = 攻击来源位置（远程攻击用）
   strike(e, kind, src) {
     const p = this.player;
+    if (kind === 'flare') return this.flareStrike(e, src); // 信使的信号弹：只会打晕
     if (e.onStrike) return e.onStrike(this, kind);
     if (e instanceof Chandelier) {
       if (e.state === 'fall') { e.shatter(this); return 'kill'; }
@@ -516,7 +517,7 @@ const Game = {
     if (this.state === 'play') p.update(dt, this);
     for (const c of this.crumbles) c.update(dt, this);
     for (const pr of this.props) pr.update(dt, this);
-    for (const e of this.enemies) if (e.alive) e.update(dt, this);
+    for (const e of this.enemies) if (e.alive) { if (e.stunT > 0) e.stunT -= dt; else e.update(dt, this); } // 被信号弹打晕：原地不动
     if (this.exhibit) this.exhibit.update(dt, this);
     if (this.boss) { this.boss.update(dt, this); this.boss.touchPlayer(this); }
     if (this.pickup) this.pickup.update(dt, this);
@@ -540,6 +541,7 @@ const Game = {
           if (r === 'bounced') continue;
           if (!e.alive) continue;
         }
+        if (overlap(p, e) && e.stunT > 0) { if (stompable(p, e, 14)) { this.killEnemy(e); this.stompBounce(); } continue; } // 晕着的敌人碰了不疼，踩头收尾
         if (overlap(p, e)) {
           // 冲撞模块
           if (dashStrike && !(e instanceof Chandelier && e.state !== 'fall')) {
@@ -681,7 +683,7 @@ const Game = {
     if (this.boss) this.boss.draw(ctx, this);
     this.drawBossGuide(ctx);
     if (this.pickup) this.pickup.draw(ctx, this);
-    for (const e of this.enemies) if (e.alive && vis(e, 200)) e.draw(ctx, this);
+    for (const e of this.enemies) if (e.alive && vis(e, 200)) { e.draw(ctx, this); if (e.stunT > 0) this.drawStun(ctx, e); }
     if (this.state !== 'dead' && !this.player.dead) this.player.draw(ctx, this);
     if (this.matrix) this.matrix.drawOver(ctx, this);
     if (this.core) this.core.drawOver(ctx, this);
@@ -782,10 +784,11 @@ const Game = {
     // 冲刺状态
     const dx = 232;
     ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(dx, 12, 118, 44);
-    ctx.font = '10px ' + MONO; ctx.fillStyle = 'rgba(200,200,200,0.7)'; ctx.fillText(p.C.jet ? 'SLAM' : p.C.blink ? 'BLINK' : 'DASH', dx + 10, 28); // 阿特拉斯的冲刺键是地面猛击
+    ctx.font = '10px ' + MONO; ctx.fillStyle = 'rgba(200,200,200,0.7)'; ctx.fillText(p.C.jet ? 'SLAM' : p.C.blink ? 'BLINK' : p.C.grapple ? 'HOOK' : 'DASH', dx + 10, 28); // 阿特拉斯的冲刺键是地面猛击
     let col = '#6ff', label = 'READY';
     if (p.lockT > 0) { col = (this.t * 10) % 2 < 1 ? '#f35' : '#a13'; label = `LOCK ${p.lockT.toFixed(1)}s`; }
     else if (p.dashLock > 0) { col = (this.t * 10) % 2 < 1 ? '#f33' : '#a11'; label = `ALARM ${p.dashLock.toFixed(1)}s`; }
+    else if (p.hook) { col = '#ff9a3c'; label = 'HOOKED'; }
     else if (!p.canDash) { col = '#666'; label = 'USED'; }
     ctx.fillStyle = col; ctx.fillRect(dx + 10, 34, 98 * (p.lockT > 0 ? p.lockT / 1.5 : p.dashLock > 0 ? p.dashLock / 2 : 1), 6);
     ctx.font = 'bold 10px ' + MONO; ctx.fillText(label, dx + 48, 28);

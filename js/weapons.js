@@ -15,7 +15,7 @@ const WEAPON_INFO = {
 
 // ---------------- 玩家发出的弹道 ----------------
 class PShot {
-  // type: bullet | spore | reflect | wave
+  // type: bullet | spore | reflect | wave | flare（信使的信号弹）
   constructor(o) { Object.assign(this, { t: 0, dead: false, r: 4, grav: 0, life: 1, pierce: false, hit: new Set() }, o); }
   get box() { return { x: this.x - this.r, y: this.y - this.r, w: this.r * 2, h: this.r * 2 }; }
   update(dt, g) {
@@ -36,6 +36,7 @@ class PShot {
       if (W.pointSolid(this.x, this.y) || this.y > W.ph || this.x < 0 || this.x > W.pw) { this.impact(g); return; }
     }
     if (this.type === 'bullet' && Math.random() < 0.5) g.particles.add({ x: this.x, y: this.y, vx: 0, vy: 0, life: 0.18, size: 1.5, color: '#fff3c0', add: true });
+    if (this.type === 'flare' && Math.random() < 0.7) g.particles.add({ x: this.x + rand(-2, 2), y: this.y + rand(-2, 2), vx: rand(-15, 15), vy: rand(-15, 15), life: 0.3, size: rand(1.5, 3), color: Math.random() < 0.5 ? '#ff9a3c' : '#ffe0a0', add: true });
     if (this.type === 'spore' && Math.random() < 0.4) g.particles.add({ x: this.x, y: this.y, vx: rand(-20, 20), vy: rand(-20, 20), life: 0.35, size: 2, color: '#9fe8c0', add: true });
   }
   burst(g, n) { g.particles.burst(this.x, this.y, n, { color: this.colors || ['#ffd070', '#fff'], shape: 'spark', smin: 60, smax: 220, lmin: 0.1, lmax: 0.3, add: true }); }
@@ -58,6 +59,9 @@ class PShot {
       const tx = this.x - this.vx * 0.02, ty = this.y - this.vy * 0.02;
       ctx.strokeStyle = 'rgba(255,220,140,0.55)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(this.x, this.y); ctx.stroke();
       ctx.fillStyle = '#fff6d0'; ctx.beginPath(); ctx.arc(this.x, this.y, 2.5, 0, 7); ctx.fill();
+    } else if (this.type === 'flare') {
+      const gr = ctx.createRadialGradient(this.x, this.y, 1, this.x, this.y, 12); gr.addColorStop(0, 'rgba(255,250,230,1)'); gr.addColorStop(0.35, 'rgba(255,154,60,0.85)'); gr.addColorStop(1, 'rgba(255,120,40,0)');
+      ctx.fillStyle = gr; ctx.fillRect(this.x - 12, this.y - 12, 24, 24);
     } else if (this.type === 'spore') {
       const gr = ctx.createRadialGradient(this.x, this.y, 1, this.x, this.y, 9); gr.addColorStop(0, 'rgba(210,255,220,0.95)'); gr.addColorStop(1, 'rgba(90,220,150,0)');
       ctx.fillStyle = gr; ctx.fillRect(this.x - 9, this.y - 9, 18, 18);
@@ -118,6 +122,11 @@ Object.assign(Game, {
       this.particles.burst(mx, my, 8, { color: ['#fff3c0', '#ffb040', '#fff'], shape: 'spark', smin: 60, smax: 260, lmin: 0.08, lmax: 0.2, add: true });
       this.particles.burst(mx, my, 5, { color: ['rgba(150,150,150,0.5)'], shape: 'glow', smin: 10, smax: 50, lmin: 0.4, lmax: 0.8, grow: 10, szmin: 4, szmax: 6 });
       setTimeout(() => { if (Inventory.weapon() === 'flintlock') Sound.sfx.reload(); }, 820);
+    } else if (k === 'flare') {
+      // 信使的信号枪：一颗橙色信号弹，不致死，只会把敌人打晕
+      this.pshots.push(new PShot({ type: 'flare', x: mx, y: my, vx: base.x * 760, vy: base.y * 760, r: 5, life: 0.7, kind: 'flare', colors: ['#ff9a3c', '#ffe0a0', '#fff'] }));
+      Sound.sfx.flare(); Input.rumble(0.05, 0.2, 50);
+      this.particles.burst(mx, my, 6, { color: ['#ff9a3c', '#ffe0a0'], shape: 'spark', smin: 40, smax: 160, lmin: 0.1, lmax: 0.25, add: true });
     } else if (k === 'sporeGun') {
       const a0 = Math.atan2(base.y, base.x);
       for (const da of [-0.16, 0, 0.16]) {

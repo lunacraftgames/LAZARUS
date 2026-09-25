@@ -7,6 +7,7 @@
 // 小扫（可选角色）：没有二段跳，但能沿任何实心瓦片的表面爬行（墙、天花板、翻过外角）；另外单独检查一遍。
 // 阿特拉斯（可选角色）：没有冲刺和二段跳，靠跳跃 + 喷气悬停（实测：按住跳跃最高约 6.6 格，平飞约 12 格）。
 // 赤影（可选角色）：没有二段跳，跳跃 + 一次约 4 格的 8 向相位闪现（实测：跳到最高点再朝上闪现能升 8 格多，平移约 10 格）；不算穿墙。
+// 信使（可选角色）：没有冲刺和二段跳，跳跃 + 滑翔（平地助跑约 10.6 格，每下落 1 格多飘 2 格）+ 抓钩翻上台子边缘（最高 8 格、离墙 ≤ 5 格）；不算荡秋千。
 //   第四章：能翻转重力的地方（按时间交替的关卡处处可翻，开关关卡只在开关旁）额外允许「倒过来」的跳跃和落下。
 // 只用于发现“明显无法到达出口”的设计错误；不模拟敌人、激光、时序，结果仅供参考。
 const fs = require('fs'), vm = require('vm'), path = require('path');
@@ -34,7 +35,7 @@ for (const L of ctx.LEVELS) {
   const ch = parseInt(L.id, 10), dj = ch >= 2;
   const wet = (x, y) => !!(B.water && B.water[y] && B.water[y][x]);
   const crawlTag = () => { const ok = reachCrawl(L, g, t, solid, wet, support); if (!ok) bad++; return ` · 小扫${ok ? '可达' : '【不可达！】'}`; };
-  if (ch >= 4) { if (L.boss) { console.log(`${L.id} ${L.name}: Boss 关，跳过`); continue; } const ok = reach4(L, g, t, solid); if (!ok) bad++; console.log(`${L.id} ${L.name}: 含重力翻转${ok ? '可达' : '【不可达！】'}${crawlTag()} · 阿特拉斯 / 赤影按重力翻转规则${ok ? '可达' : '【不可达！】'}`); continue; }
+  if (ch >= 4) { if (L.boss) { console.log(`${L.id} ${L.name}: Boss 关，跳过`); continue; } const ok = reach4(L, g, t, solid); if (!ok) bad++; console.log(`${L.id} ${L.name}: 含重力翻转${ok ? '可达' : '【不可达！】'}${crawlTag()} · 阿特拉斯 / 赤影 / 信使按重力翻转规则${ok ? '可达' : '【不可达！】'}`); continue; }
   const stand = (x, y) => !solid(x, y) && !solid(x, y - 1) && t(x, y) !== '^' && (BLOCK.includes(t(x, y + 1)) || support.has(x + ',' + (y + 1)) || wet(x, y) || t(x, y + 1) === 'u');
   let S = null, E = null;
   for (let y = 0; y < L.h; y++) for (let x = 0; x < L.w; x++) { if (g[y][x] === 'S') S = [x, y]; if (g[y][x] === 'E') E = [x, y]; }
@@ -116,11 +117,38 @@ for (const L of ctx.LEVELS) {
     }
     return seen.has(E + '');
   };
-  const a = reach(false), b = reach(true), j = reachJet(), v = reachBlink();
+  // 信使：跳跃 + 滑翔（实测：平地助跑约 10.6 格，每往下落 1 格多飘 2 格）+ 抓钩翻上台子边缘（实测：地面上最高 8 格，离墙 ≤ 5 格）/ 朝上钩天花板穿过单向平台
+  const reachEva = () => {
+    const seen = new Set([S + '']), q = [S];
+    const ceil = (x, y) => { for (let k = 1; k <= 7; k++) if (solid(x, y - k)) return y - k; return -1; }; // 正上方 7 格内第一块实心瓦片（单向平台不挡钩子）
+    const lip = (x2, y2, s) => solid(x2, y2 + 1) && !solid(x2 - s, y2 + 1) && !solid(x2 - s, y2) && !solid(x2 - s, y2 - 1);
+    while (q.length) {
+      const [x, y] = q.shift();
+      const spring = t(x, y) === 'T' || t(x, y + 1) === 'u', inW = wet(x, y);
+      for (const [x2, y2] of nodes) {
+        const k = x2 + ',' + y2; if (seen.has(k)) continue;
+        const dy = y - y2, dx = Math.abs(x2 - x), s = Math.sign(x2 - x);
+        let ok = false;
+        if (spring && dy <= 10 && dx <= 5) ok = true;
+        else if (inW && wet(x2, y2) && Math.abs(dy) + dx <= 2) ok = true;
+        else if (inW && dy <= 4 && dy >= 0 && dx <= 5) ok = true;
+        else if (dy >= 2 && dy <= 8 && dx >= 1 && dx <= 6 && lip(x2, y2, s)) ok = true; // 抓钩钩住台子边缘，收绳翻上去
+        else if (dy >= 2 && dy <= 7 && dx <= 4 && ONE.includes(t(x2, y2 + 1)) && ceil(x, y) >= 0 && ceil(x, y) <= y2 - 2) ok = true; // 朝正上方钩住天花板，穿过单向平台再落上去
+        else if (dy > 3) ok = false;
+        else if (dy >= 0) ok = dx <= Math.max(H[dy], 10 - 2 * dy);
+        else ok = dx <= 10 + 2 * Math.min(6, -dy);
+        if (ok && !(spring && dy > 3) && !(dy > 3) && !(inW && wet(x2, y2)) && !clear(x, y, x2, y2)) ok = false;
+        if (ok) { seen.add(k); q.push([x2, y2]); }
+      }
+    }
+    return seen.has(E + '');
+  };
+  const a = reach(false), b = reach(true), j = reachJet(), v = reachBlink(), ev = reachEva();
   if (!b) bad++;
   if (!j) bad++;
   if (!v) bad++;
-  console.log(`${L.id} ${L.name}: 不冲刺${a ? '可达' : '不可达'} · 含冲刺${b ? '可达' : '【不可达！】'}${crawlTag()} · 阿特拉斯${j ? '可达' : '【不可达！】'} · 赤影${v ? '可达' : '【不可达！】'}`);
+  if (!ev) bad++;
+  console.log(`${L.id} ${L.name}: 不冲刺${a ? '可达' : '不可达'} · 含冲刺${b ? '可达' : '【不可达！】'}${crawlTag()} · 阿特拉斯${j ? '可达' : '【不可达！】'} · 赤影${v ? '可达' : '【不可达！】'} · 信使${ev ? '可达' : '【不可达！】'}`);
 }
 // 第四章：节点 = (x, y, 朝向)，朝向 0 = 站在地面上，1 = 倒立站在天花板下
 function reach4(L, g, t, solid) {
