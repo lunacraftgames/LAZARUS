@@ -427,13 +427,14 @@ class IRBeam {
     this.lt += dt * slow;
     let on = true;
     if (!this.always) { const ph = (this.lt + this.offset) % this.period; on = ph < this.onDur; this.warn = !on && ph > this.period - 0.5; }
+    if (this.off) on = false; // 镜像拉撒路 Boss：刚被撞过的一侧过热关闭
     if (this.guard) {
       // 监视进程：守着的执行官全部被消灭后，红外线随之关闭
       const r = this;
       this.guarding = g.enemies.some((e) => e.alive && e.irVulnerable && e.x + e.w > r.x0 - 64 && e.x < r.x1 + 64 && Math.abs(e.y + e.h / 2 - r.yc) < 240);
       if (!this.guarding) on = false;
     }
-    this.fade = approach(this.fade, this.guard && !this.guarding ? 0 : 1, dt * 2);
+    this.fade = approach(this.fade, (this.guard && !this.guarding) || this.off ? 0 : 1, dt * 2);
     if (on && !this.on && !this.always && Math.abs(g.player.cx - (this.x + this.w / 2)) < 520) Sound.sfx.ir();
     this.on = on;
     if (!on) return;
@@ -893,20 +894,30 @@ PROP_FACTORIES.I = (x, y, g) => new IRBeam({ cx: x, cy: y, offset: (x * 0.73) % 
 
 // ============================================================
 //  Boss：算法审判官 · 镜像拉撒路（The Mirror Lazarus）
-//  它会完美复制你 5 秒前的走位和跳跃（血量越低，延迟越短）。武器打不中它，
+//  它会完美复制你几秒前的走位、跳跃——还有攻击（血量越低，延迟越短）。武器打不中它，
 //  但它的体积比你大一号——场地两侧高台上有一道「解密激光」，刚好高过你的头顶，
-//  却低于它的头顶。走到激光下面，5 秒后它就会自己撞进去。
+//  却低于它的头顶。走到激光下面，几秒后它就会自己撞进去。
+//  · 被撞过的那一侧激光会过热关闭，下一次必须引它去另一侧
+//  · 二阶段起两道激光变成周期开关（开之前闪烁预警）：在激光下面多待一会儿，让它回放到激光亮起的那一刻
+//  · 一阶段起就会发射回放弹；三阶段三连发
+//  · 你挥过的每一刀，它都会在同一个位置回放一次（红色虚框是它接下来要砍的地方）
 // ============================================================
-const MIR_DELAY = [5, 4.2, 3.4];
+const MIR_DELAY = [4.5, 3.4, 2.5];
+const MIR_IR = [null, { period: 3.0, on: 1.9 }, { period: 2.6, on: 1.4 }]; // 各阶段激光的开关节奏（一阶段常亮）
+const MIR_SHOT = [{ cd: 3.0, sp: 170, n: 1 }, { cd: 2.2, sp: 210, n: 1 }, { cd: 2.4, sp: 240, n: 3 }];
 class MirrorLazarus {
   constructor(g, short) {
-    this.maxHp = 6; this.hp = 6; this.state = 'intro'; this.t = 0; this.short = short;
+    this.maxHp = 8; this.hp = 8; this.state = 'intro'; this.t = 0; this.short = short;
     this.hist = []; this.clock = 0; this.delay = MIR_DELAY[0]; this.x = g.player.cx; this.y = g.player.y + g.player.h; this.f = 1; this.air = false; this.vx = 0; this.run = 0;
-    this.flash = 0; this.hitCd = 0; this.dead = false; this.shotT = 3; this.phaseSeen = 1; this.firstHit = true;
-    this.title = '算法审判官 · 镜像拉撒路'; this.marks = [4 / 6, 2 / 6];
+    this.flash = 0; this.hitCd = 0; this.dead = false; this.shotT = 2.5; this.phaseSeen = 1; this.firstHit = true;
+    this.atks = []; this.slashes = []; this.lastAtk = null;
+    this.title = '算法审判官 · 镜像拉撒路'; this.marks = [5 / 8, 2 / 8];
+    // 场地两侧的解密激光（水平红外线）
+    this.beams = g.props.filter((pr) => pr instanceof IRBeam && pr.horiz);
+    for (const b of this.beams) { b.off = false; b.always = true; b.on = true; }
   }
   get active() { return !['dying', 'dead'].includes(this.state); }
-  get phase() { return this.hp > 4 ? 1 : this.hp > 2 ? 2 : 3; }
+  get phase() { return this.hp > 5 ? 1 : this.hp > 2 ? 2 : 3; }
   get waveInfo() {
     if (this.state === 'record') return `深度学习中  ${Math.min(99, Math.floor(this.clock / this.delay * 100))}%`;
     if (this.state === 'hunt') return `回放延迟  ${this.delay.toFixed(1)}s`;
@@ -922,13 +933,46 @@ class MirrorLazarus {
     const a = H[0], b = H[1], k = clamp((T - a.t) / Math.max(1e-6, b.t - a.t), 0, 1);
     return { x: lerp(a.x, b.x, k), y: lerp(a.y, b.y, k), f: b.f, air: b.air, vx: b.vx, run: b.run };
   }
+  // 各阶段的激光节奏：一阶段常亮；之后周期开关（两侧错开半个周期）
+  setBeams() {
+    const cfg = MIR_IR[this.phase - 1];
+    this.beams.forEach((b, i) => {
+      if (!cfg) { b.always = true; return; }
+      b.always = false; b.period = cfg.period; b.onDur = cfg.on; b.offset = i * cfg.period / 2; b.lt = 0;
+    });
+  }
+  // 记录你的攻击：之后在同一位置回放（判定比你的大一圈——它比你大一号）
+  recordAttack(p) {
+    if (p.atkT <= 0 || p.atkHits === this.lastAtk) return;
+    const ab = p.attackBox(); if (!ab) return;
+    this.lastAtk = p.atkHits;
+    this.atks.push({ t: this.clock, x: ab.x - 6, y: ab.y - 6, w: ab.w + 12, h: ab.h + 12 });
+  }
+  replayAttacks(dt, g) {
+    const T = this.clock - this.delay;
+    while (this.atks.length && this.atks[0].t <= T) {
+      const a = this.atks.shift();
+      this.slashes.push({ x: a.x, y: a.y, w: a.w, h: a.h, t: 0 });
+      Sound.sfx.slash();
+    }
+    for (const sl of this.slashes) {
+      sl.t += dt;
+      if (sl.t < 0.2 && g.state === 'play' && overlap(g.player.hurt(), sl)) g.killPlayer('boss');
+    }
+    this.slashes = this.slashes.filter((sl) => sl.t < 0.3);
+  }
+  shoot(g) {
+    const p = g.player, S = MIR_SHOT[this.phase - 1], ox = this.x, oy = this.y - 40, a0 = Math.atan2(p.cy - oy, p.cx - ox);
+    for (let i = 0; i < S.n; i++) { const a = a0 + (i - (S.n - 1) / 2) * 0.28; g.projectiles.push(new ReplayOrb(ox, oy, Math.cos(a) * S.sp, Math.sin(a) * S.sp)); }
+    Sound.sfx.throw();
+  }
   update(dt, g) {
     this.t += dt; this.flash = Math.max(0, this.flash - dt); this.hitCd -= dt;
     const p = g.player, playing = g.state === 'play';
     if (this.state === 'intro') {
       if (this.t > (this.short ? 0.6 : 1.6)) {
         if (!this.short) g.say(RADIO.mirrorIntro);
-        this.state = 'record'; this.t = 0; this.clock = 0; this.hist = []; Sound.sfx.bossForm(); g.shake(6);
+        this.state = 'record'; this.t = 0; this.clock = 0; this.hist = []; this.atks = []; Sound.sfx.bossForm(); g.shake(6);
       }
       return;
     }
@@ -946,6 +990,7 @@ class MirrorLazarus {
     if (!playing) return;
     this.clock += dt;
     this.hist.push({ t: this.clock, x: p.cx, y: p.y + p.h, f: p.facing, air: !p.onGround, vx: p.vx, run: p.run });
+    this.recordAttack(p);
     if (this.state === 'record') {
       const s = this.hist[0]; this.x = s.x; this.y = s.y; this.f = s.f;
       if (this.clock >= this.delay) { this.state = 'hunt'; this.t = 0; Sound.sfx.mirrorWake(); g.shake(8); }
@@ -954,25 +999,27 @@ class MirrorLazarus {
     // 回放
     const s = this.sample();
     if (s) { this.vx = (s.x - this.x) / dt; this.x = s.x; this.y = s.y; this.f = s.f; this.air = s.air; this.run = s.run; }
-    // 二阶段起：发射回放弹
-    if (this.phase >= 2) {
-      this.shotT -= dt;
-      if (this.shotT <= 0) {
-        this.shotT = this.phase >= 3 ? 1.9 : 2.8;
-        const ox = this.x, oy = this.y - 40, a = Math.atan2(p.cy - oy, p.cx - ox), sp = this.phase >= 3 ? 215 : 175;
-        g.projectiles.push(new ReplayOrb(ox, oy, Math.cos(a) * sp, Math.sin(a) * sp)); Sound.sfx.throw();
-      }
+    this.replayAttacks(dt, g);
+    // 回放弹（一阶段起）
+    this.shotT -= dt;
+    if (this.shotT <= 0) { this.shotT = MIR_SHOT[this.phase - 1].cd; this.shoot(g); }
+    if (this.phase > this.phaseSeen) {
+      this.phaseSeen = this.phase; this.delay = MIR_DELAY[this.phase - 1]; this.setBeams();
+      g.say(this.phase === 2 ? RADIO.mirrorPhase2 : RADIO.mirrorPhase3);
     }
-    if (this.phase > this.phaseSeen) { this.phaseSeen = this.phase; this.delay = MIR_DELAY[this.phase - 1]; g.say(this.phase === 2 ? RADIO.mirrorPhase2 : RADIO.mirrorPhase3); }
   }
-  // 被解密激光命中
-  irHit(g) {
+  // 被解密激光命中：这一侧过热关闭，另一侧重新上线
+  irHit(g, beam) {
     if (this.state !== 'hunt' || this.hitCd > 0) return;
     this.hp = Math.max(0, this.hp - 1); this.flash = 0.2; this.hitCd = 2.4;
     Sound.sfx.mirrorHit(); Sound.sfx.hit(); g.shake(10); g.freeze(0.06);
     g.particles.burst(this.x, this.y - 30, 26, { color: ['#f35', '#fff', '#2f9'], shape: 'spark', smin: 100, smax: 380, lmin: 0.2, lmax: 0.5, add: true });
+    if (beam && this.beams.length > 1) {
+      for (const b of this.beams) b.off = b === beam;
+      g.particles.burst(beam.x + beam.w / 2, beam.yc, 20, { color: ['#f35', '#888', '#fff'], shape: 'spark', smin: 40, smax: 200, lmin: 0.3, lmax: 0.8 });
+    }
     if (this.firstHit) { this.firstHit = false; g.say(RADIO.mirrorHit); }
-    if (this.hp <= 0) { this.state = 'dying'; this.t = 0; Sound.sfx.roar(); }
+    if (this.hp <= 0) { this.state = 'dying'; this.t = 0; this.slashes = []; for (const b of this.beams) b.off = false; Sound.sfx.roar(); }
   }
   touchPlayer(g) {
     if (this.state !== 'hunt' || this.hitCd > 0 || g.state !== 'play') return;
@@ -982,12 +1029,28 @@ class MirrorLazarus {
   slashed(g, ab) {
     if (this.state !== 'hunt' || !overlap(ab, this.body())) return;
     g.player.atkHits.add(this); Sound.sfx.block();
-    g.toastHint('武器对镜像无效——它会复制你 5 秒前的走位。走到高台的激光下面，让它自己撞进去');
+    g.toastHint('武器对镜像无效——而且你砍过的地方，它都会照样砍一次。引它撞进另一侧还亮着的激光');
   }
   onShot(s, g) { if (this.state === 'hunt' && s.type !== 'wave' && s.type !== 'cloud' && overlap(s.box, this.body())) { s.dead = true; Sound.sfx.ricochet(); s.burst(g, 6); } }
+  // 接下来要回放的攻击（红色虚框）和正在回放的斩击
+  drawSlashes(ctx, g) {
+    const t = g.t;
+    ctx.strokeStyle = 'rgba(255,60,90,0.45)'; ctx.lineWidth = 1; ctx.setLineDash([3, 4]);
+    for (const a of this.atks) ctx.strokeRect(a.x, a.y, a.w, a.h);
+    ctx.setLineDash([]);
+    ctx.globalCompositeOperation = 'lighter';
+    for (const sl of this.slashes) {
+      const k = 1 - sl.t / 0.3;
+      ctx.fillStyle = `rgba(255,40,80,${0.5 * k})`; ctx.fillRect(sl.x, sl.y, sl.w, sl.h);
+      ctx.strokeStyle = `rgba(255,220,230,${0.9 * k})`; ctx.lineWidth = 2; ctx.beginPath();
+      ctx.moveTo(sl.x, sl.y + sl.h * (0.8 + Math.sin(t * 40) * 0.05)); ctx.quadraticCurveTo(sl.x + sl.w / 2, sl.y - 4, sl.x + sl.w, sl.y + sl.h * 0.3); ctx.stroke();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
   draw(ctx, g) {
     if (this.state === 'dead' || this.state === 'intro') return;
     const t = g.t;
+    if (this.active) this.drawSlashes(ctx, g);
     // 它接下来要走的路：你过去几秒的轨迹
     if (this.hist.length > 2 && this.active) {
       ctx.strokeStyle = 'rgba(255,60,90,0.35)'; ctx.lineWidth = 2; ctx.setLineDash([3, 7]); ctx.beginPath();
@@ -1032,13 +1095,13 @@ class MirrorLazarus {
 Object.assign(RADIO, {
   mirrorIntro: [
     ['EVA', '拉撒路，停下！前面那个红色的影子……它在复制你。'],
-    ['EVA', '「镜像拉撒路」。它会完美复制你 5 秒前的每一步、每一次跳跃。武器对它没用。'],
+    ['EVA', '「镜像拉撒路」。它会完美复制你 4.5 秒前的每一步、每一次跳跃——连你挥出的每一刀都会照样砍一遍。武器对它没用。'],
     ['EVA', '但它比你大一号。两侧高台上那道解密激光，刚好比你的头顶高一点——却比它的头顶低。'],
-    ['SYS', '[提示] 走到高台的激光下面（别在下面起跳）→ 离开 → 5 秒后它会沿着你的路线撞进激光 · 红色虚线是它接下来要走的路'],
+    ['SYS', '[提示] 走到高台的激光下面（别在下面起跳）→ 离开 → 几秒后它会沿着你的路线撞进激光 · 红色虚线是它接下来要走的路，红色虚框是它接下来要砍的地方'],
   ],
-  mirrorHit: [['EVA', '它撞上去了！它只会复制，不会思考——继续！']],
-  mirrorPhase2: [['EVA', '它在学习……回放延迟变短了。它还开始发射回放弹。']],
-  mirrorPhase3: [['EVA', '只剩 3 秒多的延迟了！别停下来——停下来，它就会站到你身上。']],
+  mirrorHit: [['EVA', '它撞上去了！那一侧的激光过热了——下一次，把它引到另一侧去！']],
+  mirrorPhase2: [['EVA', '它在学习……回放延迟变短了。激光也开始时开时关——在下面多站一会儿，等它回放到激光亮起的那一刻。']],
+  mirrorPhase3: [['EVA', '只剩两秒多的延迟了！回放弹也变成了三连发——别停下来，也别乱挥刀！']],
   mirrorDefeat: [
     ['EVA', '……镜像崩溃了。'],
     ['EVA', '拉撒路，它刚才……它倒下的时候，说的是你的编号。'],

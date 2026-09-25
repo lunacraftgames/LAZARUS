@@ -672,9 +672,12 @@ makeEnemy = function (s, world) { // eslint-disable-line no-func-assign
 
 // ============================================================
 //  最终 Boss：神性通用智能 · Omni-Mind（万脑）
-//  第一阶段（数据压迫）：全屏激光栅格 / 高低双激光 / 金色数据块坠落；每两轮攻击后巨眼降下暴露，可以攻击或撞击
+//  第一阶段（数据压迫）：全屏激光栅格 / 高低双激光 / 金色数据块坠落；每两轮（之后三轮）攻击后巨眼降下暴露，可以攻击或撞击
+//    · 每次暴露最多打掉 15 点，至少要三次暴露；第二次起攻击会叠加落块、预警缩短；暴露时巨眼周期放出一圈回放弹
 //  第二阶段（重构暴走）：强制重力反转、剥夺攻击键、真相揭晓；跳跃撞碎场上 4 个「反叛人类核心」
+//    · 核心按顺序亮起，只有亮着的能撞碎；每撞碎一个，重力短暂恢复再翻回去；横扫与回放弹随核心减少而加快
 //  第三阶段（拉撒路终局）：全场陷入黑暗，Boss 血量无限。沿着平台跳向巨眼核心——触碰即启动自毁
+//    · 平台踩上去 1.2 秒后崩塌（4 秒后重建）；横扫更频繁、预警更短（预警画在黑暗之上）
 //  死亡后从当前阶段重来（g.bossSave）
 // ============================================================
 const OMNI = { X: 480, L: 32, R: 928, FLOOR: 480, CEIL: 64 };
@@ -687,6 +690,7 @@ class OmniMind {
     this.state = 'intro'; this.t = 0; this.x = OMNI.X; this.eyeY = -160; this.targetY = 150; this.open = 0.25; this.look = 0;
     this.flash = 0; this.touchCd = 0; this.dead = false; this.hz = []; this.atkT = 1.4; this.cycles = 0; this.last = '';
     this.cores = []; this.dark = ph === 3 ? 1 : 0; this.shotT = 2.2; this.sweepT = 2.5; this.plats = [];
+    this.expN = 0; this.expFloor = 60; this.ringT = 0; this.flipBack = 0; this.firstCap = true;
     this.title = '神性通用智能 · Omni-Mind（万脑）'; this.marks = [0.6, 0.2];
     g.world.solids = g.world.solids.filter((s) => !s.omni);
     if (g.core) g.core.forceGd = ph === 2 ? -1 : 1;
@@ -705,15 +709,19 @@ class OmniMind {
   eyeRect() { const r = this.phaseN === 3 ? 40 : 44; return { x: this.x - r, y: this.eyeY - r, w: r * 2, h: r * 2 }; }
   body() { return this.eyeRect(); }
   stopSounds() {}
-  makeCores() { this.cores = OMNI_CORES.map(([x, y], i) => ({ x, y, alive: true, i, t: i })); }
+  makeCores() { this.cores = OMNI_CORES.map(([x, y], i) => ({ x, y, alive: true, i, t: i })); this.lit = 0; }
+  // 按顺序亮起：只有亮着的核心能撞碎
+  litCore() { return this.cores.find((c) => c.alive); }
+  get broken() { return this.cores.filter((c) => !c.alive).length; }
   makePlats(g) {
-    this.plats = OMNI_PLATS.map(([x, y, w]) => ({ x, y, w, h: 16, active: true, oneWay: true, omni: true }));
+    this.plats = OMNI_PLATS.map(([x, y, w]) => ({ x, y, w, h: 16, active: true, oneWay: true, omni: true, crumble: 0, down: 0 }));
     for (const s of this.plats) g.world.solids.push(s);
   }
   // ---------------- 攻击 ----------------
   beam(rects, tele, fire) { this.hz.push({ kind: 'beam', rects, tele, fire, t: 0, fired: false }); }
   pattern(g) {
     const p = g.player, opts = ['grid', 'lowhigh', 'rain'].filter((k) => k !== this.last), k = pick(opts); this.last = k;
+    const hard = this.expN > 0; // 第一次暴露之后：预警更短，激光和落块叠加
     Sound.sfx.omniCharge();
     if (k === 'grid') {
       // 全屏竖向激光栅格，留两道 3 格宽的缝隙（其中一道离你不远）
@@ -726,17 +734,28 @@ class OmniMind {
         if (hot && run < 0) run = tx;
         if (!hot && run >= 0) { rects.push({ x: run * TILE, y: OMNI.CEIL, w: (tx - run) * TILE, h: OMNI.FLOOR - OMNI.CEIL }); run = -1; }
       }
-      this.beam(rects, 1.3, 0.6);
+      this.beam(rects, hard ? 1.05 : 1.3, 0.6);
+      if (hard && Math.random() < 0.5) this.rain(g, 3, 0.5);
     } else if (k === 'lowhigh') {
       // 贴地的低激光（要跳）+ 有时再加一道高激光（不能跳太高）
       const rects = [{ x: OMNI.L, y: OMNI.FLOOR - 20, w: OMNI.R - OMNI.L, h: 12 }];
       if (Math.random() < 0.6) rects.push({ x: OMNI.L, y: OMNI.FLOOR - 150, w: OMNI.R - OMNI.L, h: 12 });
-      this.beam(rects, 1.1, 0.35);
-    } else {
-      const xs = []; while (xs.length < 6) { const x = randi(2, 27) * TILE; if (xs.every((o) => Math.abs(o - x) > 80)) xs.push(x); }
-      if (!xs.some((x) => Math.abs(x + 20 - p.cx) < 50)) xs[0] = clamp(p.cx - 20, 40, 880); // 一定有一块落向你
-      xs.forEach((x, i) => this.hz.push({ kind: 'block', x, y: OMNI.CEIL, vy: 0, tele: 0.9 + i * 0.12, t: 0 }));
-    }
+      this.beam(rects, hard ? 0.9 : 1.1, 0.35);
+      if (hard && Math.random() < 0.6) this.rain(g, 3, 0.2);
+    } else this.rain(g, hard ? 8 : 6, 0);
+  }
+  // 金色数据块坠落（n 块，其中一定有一块落向你）
+  rain(g, n, delay) {
+    const p = g.player, xs = [];
+    while (xs.length < n) { const x = randi(2, 27) * TILE; if (xs.every((o) => Math.abs(o - x) > 80)) xs.push(x); }
+    if (!xs.some((x) => Math.abs(x + 20 - p.cx) < 50)) xs[0] = clamp(p.cx - 20, 40, 880);
+    xs.forEach((x, i) => this.hz.push({ kind: 'block', x, y: OMNI.CEIL, vy: 0, tele: delay + 0.9 + i * 0.12, t: 0 }));
+  }
+  // 暴露时：巨眼放出一圈慢速回放弹（每圈错开角度，缝隙足够钻过去）
+  ring(g) {
+    const n = 8, a0 = this.ringN++ * 0.39;
+    for (let i = 0; i < n; i++) { const a = a0 + i * Math.PI * 2 / n; g.projectiles.push(new ReplayOrb(this.x + Math.cos(a) * 56, this.eyeY + Math.sin(a) * 56, Math.cos(a) * 120, Math.sin(a) * 120)); }
+    Sound.sfx.throw(); this.flash = 0.1;
   }
   updHazard(h, dt, g) {
     h.t += dt; const p = g.player;
@@ -753,11 +772,25 @@ class OmniMind {
   sweepCeil(g) { // 第二阶段：沿着「天花板地面」的横扫，跳（往下）躲开；有时只扫一半
     const half = Math.random() < 0.45 ? (Math.random() < 0.5 ? 'L' : 'R') : null;
     const x = half === 'R' ? OMNI.X : OMNI.L, w = half ? OMNI.X - OMNI.L : OMNI.R - OMNI.L;
-    this.beam([{ x, y: OMNI.CEIL + 8, w, h: 12 }], 1.0, 0.4); Sound.sfx.omniCharge();
+    this.beam([{ x, y: OMNI.CEIL + 8, w, h: 12 }], 0.85, 0.4); Sound.sfx.omniCharge();
   }
-  sweepTier(g) { // 第三阶段：在某一层平台的高度横扫
-    const tiers = [OMNI.FLOOR, 400, 330, 260, 200], y = pick(tiers);
-    this.beam([{ x: OMNI.L, y: y - 26, w: OMNI.R - OMNI.L, h: 12 }], 1.5, 0.5); Sound.sfx.omniCharge();
+  sweepTier(g) { // 第三阶段：在某一层平台的高度横扫（优先扫你所在的那一层附近）
+    const tiers = [OMNI.FLOOR, 400, 330, 260, 200], p = g.player;
+    const near = tiers.filter((y) => Math.abs(y - (p.y + p.h)) < 110), y = near.length && Math.random() < 0.7 ? pick(near) : pick(tiers);
+    this.beam([{ x: OMNI.L, y: y - 26, w: OMNI.R - OMNI.L, h: 12 }], 1.1, 0.5); Sound.sfx.omniCharge();
+  }
+  // 第三阶段：站上去的平台很快崩塌，过一会儿重建
+  updPlats(dt, g) {
+    const p = g.player;
+    for (const s of this.plats) {
+      if (!s.active) { s.down -= dt; if (s.down <= 0) { s.active = true; s.crumble = 0; g.particles.burst(s.x + s.w / 2, s.y + 4, 10, { color: ['#e6c56a', '#fff6d8'], smin: 20, smax: 90, lmin: 0.2, lmax: 0.5, add: true }); } continue; }
+      const on = g.state === 'play' && p.onGround && p.x + p.w > s.x && p.x < s.x + s.w && Math.abs(p.y + p.h - s.y) < 4;
+      if (on || s.crumble > 0) s.crumble += dt;
+      if (s.crumble > 1.2) {
+        s.active = false; s.down = 4; s.crumble = 0; Sound.sfx.crumble();
+        g.particles.burst(s.x + s.w / 2, s.y + 4, 18, { color: ['#d8d6ce', '#e6c56a'], shape: 'shard', smin: 40, smax: 160, grav: 900, lmin: 0.4, lmax: 0.9, szmin: 2, szmax: 5 });
+      }
+    }
   }
   // ---------------- 流程 ----------------
   update(dt, g) {
@@ -781,13 +814,14 @@ class OmniMind {
         if (!play || this.hz.length) break;
         this.atkT -= dt;
         if (this.atkT <= 0) {
-          if (this.cycles >= 2) { this.state = 'expose'; this.t = 0; this.cycles = 0; Sound.sfx.recharge(); }
+          if (this.cycles >= (this.expN ? 3 : 2)) { this.state = 'expose'; this.t = 0; this.cycles = 0; this.expFloor = Math.max(60, this.hp - 15); this.ringT = 1.0; this.ringN = 0; Sound.sfx.recharge(); }
           else { this.pattern(g); this.cycles++; this.atkT = 0.7; }
         }
         break;
       case 'expose':
         this.targetY = 318; this.open = approach(this.open, 1, dt * 3);
-        if (this.t > 4) { this.state = 'p1'; this.t = 0; this.atkT = 1.0; }
+        if (play) { this.ringT -= dt; if (this.ringT <= 0) { this.ringT = 1.2; this.ring(g); } }
+        if (this.t > 4) this.endExpose();
         break;
       case 'trans2':
         this.targetY = 150; this.open = approach(this.open, 0.6, dt);
@@ -801,11 +835,17 @@ class OmniMind {
       case 'p2':
         this.targetY = 380; this.open = approach(this.open, 0.7, dt);
         if (!play) break;
-        this.sweepT -= dt; if (this.sweepT <= 0 && !this.hz.length) { this.sweepT = 3.6; this.sweepCeil(g); }
+        if (this.flipBack > 0) { // 撞碎核心后重力短暂恢复，随后再次被强制反转
+          const prev = this.flipBack; this.flipBack -= dt;
+          if (Math.floor(prev * 4) !== Math.floor(this.flipBack * 4) && this.flipBack < 0.8) Sound.sfx.gwarn();
+          if (this.flipBack <= 0) g.core.forceGd = -1;
+        }
+        const k = this.broken;
+        this.sweepT -= dt; if (this.sweepT <= 0 && !this.hz.length) { this.sweepT = 2.8 - k * 0.3; this.sweepCeil(g); }
         this.shotT -= dt;
         if (this.shotT <= 0) {
-          this.shotT = 2.6; const a = Math.atan2(p.cy - this.eyeY, p.cx - this.x);
-          g.projectiles.push(new ReplayOrb(this.x + Math.cos(a) * 40, this.eyeY + Math.sin(a) * 40, Math.cos(a) * 170, Math.sin(a) * 170)); Sound.sfx.throw();
+          this.shotT = 2.0 - k * 0.15; const a = Math.atan2(p.cy - this.eyeY, p.cx - this.x), sp = 190 + k * 15;
+          g.projectiles.push(new ReplayOrb(this.x + Math.cos(a) * 40, this.eyeY + Math.sin(a) * 40, Math.cos(a) * sp, Math.sin(a) * sp)); Sound.sfx.throw();
         }
         break;
       case 'trans3':
@@ -815,7 +855,8 @@ class OmniMind {
       case 'p3':
         this.open = approach(this.open, 1, dt); this.targetY = 110;
         if (!play) break;
-        this.sweepT -= dt; if (this.sweepT <= 0 && !this.hz.length) { this.sweepT = 5.5; this.sweepTier(g); }
+        this.updPlats(dt, g);
+        this.sweepT -= dt; if (this.sweepT <= 0 && !this.hz.length) { this.sweepT = 3.0; this.sweepTier(g); }
         break;
       case 'finale':
         p.vx = 0; p.vy = 0;
@@ -836,11 +877,17 @@ class OmniMind {
   }
   hurt(n, g) {
     if (this.state !== 'expose') return false;
-    this.hp = Math.max(60, this.hp - n); this.flash = 0.15; Sound.sfx.hit(); g.freeze(0.04); g.shake(5);
+    this.hp = Math.max(this.expFloor, this.hp - n); this.flash = 0.15; Sound.sfx.hit(); g.freeze(0.04); g.shake(5);
     g.particles.burst(this.x, this.eyeY, 14, { color: ['#fff', '#ffd070', '#f35'], shape: 'spark', smin: 100, smax: 320, lmin: 0.15, lmax: 0.4, add: true });
     if (this.hp <= 60) { this.state = 'trans2'; this.t = 0; this.hz = []; g.projectiles = []; g.say(RADIO.omniTruth); Sound.sfx.roar(); }
+    else if (this.hp <= this.expFloor) { // 这一次暴露能打的份已经打完：巨眼立刻收回
+      Sound.sfx.roar(); g.shake(10); g.flash(0.4, '#ffd070');
+      if (this.firstCap) { this.firstCap = false; g.say(RADIO.omniCap); }
+      this.endExpose();
+    }
     return true;
   }
+  endExpose() { this.state = 'p1'; this.t = 0; this.atkT = 1.0; this.expN++; }
   touchPlayer(g) {
     const p = g.player; if (g.state !== 'play') return;
     if (this.state === 'expose' && this.touchCd <= 0 && overlap(p.hurt(), this.eyeRect())) {
@@ -850,10 +897,15 @@ class OmniMind {
     if (this.state === 'p2') {
       for (const c of this.cores) {
         if (!c.alive || Math.hypot(p.cx - c.x, p.cy - (c.y + Math.sin(c.t * 2) * 6)) > 28) continue;
+        if (c !== this.litCore()) { // 没亮的核心有护盾：撞上去只会被弹开
+          if (this.touchCd <= 0) { this.touchCd = 0.4; Sound.sfx.block(); g.stompBounce(0.6); g.toastHint('核心被护盾锁住了——只有亮着的那个能撞碎'); }
+          continue;
+        }
         c.alive = false; this.hp -= 10; this.flash = 0.2; Sound.sfx.coreBreak(); g.shake(8); g.freeze(0.06); g.stompBounce(0.8);
         g.particles.burst(c.x, c.y, 30, { color: ['#7ff', '#fff', '#ffd070'], shape: 'shard', smin: 80, smax: 360, lmin: 0.4, lmax: 1, add: true });
         const left = this.cores.filter((k) => k.alive).length;
         g.say(RADIO.omniCores[3 - left]);
+        if (left) { g.core.forceGd = 1; this.flipBack = 1.8; }
         if (!left) { this.state = 'trans3'; this.t = 0; this.hp = 20; g.core.forceGd = 1; g.bossSave = { phase: 3 }; this.phaseN = 3; Sound.music('void'); g.say(RADIO.omniFinal); }
       }
     }
@@ -917,6 +969,10 @@ class OmniMind {
     ctx.strokeStyle = '#e6c56a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(0, 0, R + 4, (R * 0.85) * Math.max(0.08, o), 0, 0, Math.PI * 2); ctx.stroke();
     ctx.filter = 'none';
     ctx.restore();
+    if (this.state === 'expose' && this.ringT < 0.4) { // 放弹前的预警：巨眼周围一圈红光收缩
+      const k = this.ringT / 0.4;
+      ctx.strokeStyle = `rgba(255,70,90,${0.9 - k * 0.5})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, 56 + k * 40, 0, Math.PI * 2); ctx.stroke();
+    }
     if (this.state === 'expose' || this.state === 'p3') {
       ctx.fillStyle = `rgba(255,220,140,${0.6 + 0.4 * Math.sin(t * 10)})`; ctx.font = 'bold 13px ' + FONT; ctx.textAlign = 'center';
       ctx.fillText(this.state === 'expose' ? '▼ 巨眼暴露 · 攻击！' : '▲ 巨眼核心 · 跳上去', x, this.state === 'expose' ? y - 70 : y + 70); ctx.textAlign = 'left';
@@ -927,6 +983,8 @@ class OmniMind {
       const cy = c.y + Math.sin(c.t * 2) * 6;
       ctx.globalCompositeOperation = 'lighter';
       const gr = ctx.createRadialGradient(c.x, cy, 2, c.x, cy, 30); gr.addColorStop(0, 'rgba(140,255,255,0.8)'); gr.addColorStop(1, 'rgba(140,255,255,0)');
+      const lit = c === this.litCore();
+      ctx.globalAlpha = lit ? 1 : 0.35;
       ctx.fillStyle = gr; ctx.fillRect(c.x - 30, cy - 30, 60, 60); ctx.globalCompositeOperation = 'source-over';
       ctx.strokeStyle = '#bff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(c.x, cy, 15, 0, Math.PI * 2); ctx.stroke();
       ctx.fillStyle = 'rgba(200,255,255,0.35)'; ctx.fill();
@@ -934,10 +992,21 @@ class OmniMind {
       ctx.strokeStyle = 'rgba(20,60,70,0.9)'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(c.x - 2, cy - 5, 3.5, 0, 7); ctx.stroke();
       ctx.beginPath(); ctx.arc(c.x, cy + 2, 7, -2, 1.4); ctx.stroke();
       ctx.fillStyle = '#bff'; ctx.font = '8px ' + MONO; ctx.textAlign = 'center'; ctx.fillText('HUMAN', c.x, cy - 20); ctx.textAlign = 'left';
+      ctx.globalAlpha = 1;
+      if (lit) { // 亮着的核心：外圈脉动
+        const r = 20 + ((t * 30) % 14);
+        ctx.strokeStyle = `rgba(160,255,255,${1 - (r - 20) / 14})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(c.x, cy, r, 0, Math.PI * 2); ctx.stroke();
+      } else { // 护盾：金色六边形
+        ctx.strokeStyle = 'rgba(230,197,106,0.8)'; ctx.lineWidth = 2; ctx.beginPath();
+        for (let k = 0; k <= 6; k++) { const a = k * Math.PI / 3 + t * 0.5; k ? ctx.lineTo(c.x + Math.cos(a) * 22, cy + Math.sin(a) * 22) : ctx.moveTo(c.x + Math.cos(a) * 22, cy + Math.sin(a) * 22); }
+        ctx.stroke();
+      }
     }
     // 终局阶梯
     for (const s of this.plats) {
-      ctx.fillStyle = '#d8d6ce'; ctx.fillRect(s.x, s.y, s.w, 8); ctx.fillStyle = '#e6c56a'; ctx.fillRect(s.x, s.y + 8, s.w, 2);
+      if (!s.active) { ctx.strokeStyle = 'rgba(230,197,106,0.25)'; ctx.setLineDash([4, 6]); ctx.strokeRect(s.x + 0.5, s.y + 0.5, s.w - 1, 7); ctx.setLineDash([]); continue; }
+      const j = s.crumble > 0 ? rand(-1.5, 1.5) * (0.5 + s.crumble) : 0;
+      ctx.fillStyle = s.crumble > 0 ? '#e8b060' : '#d8d6ce'; ctx.fillRect(s.x + j, s.y, s.w, 8); ctx.fillStyle = '#e6c56a'; ctx.fillRect(s.x + j, s.y + 8, s.w, 2);
     }
     // 攻击预警 / 激光 / 落块
     for (const h of this.hz) {
@@ -973,8 +1042,17 @@ class OmniMind {
       eg.addColorStop(0, `rgba(255,60,80,${0.5 * this.dark})`); eg.addColorStop(1, 'rgba(255,60,80,0)');
       ctx.fillStyle = eg; ctx.fillRect(ex - 150, ey - 150, 300, 300);
       ctx.strokeStyle = `rgba(255,230,170,${0.35 * this.dark})`; ctx.lineWidth = 1.5;
-      for (const s of this.plats) ctx.strokeRect(s.x - cx, s.y - cy, s.w, 8);
+      for (const s of this.plats) if (s.active) ctx.strokeRect(s.x - cx, s.y - cy, s.w, 8);
       ctx.globalCompositeOperation = 'source-over';
+      // 横扫预警画在黑暗之上：黑暗里也能看清下一道扫描的高度
+      for (const h of this.hz) {
+        if (h.kind !== 'beam') continue;
+        for (const r of h.rects) {
+          ctx.strokeStyle = h.fired ? 'rgba(255,245,230,0.9)' : `rgba(255,80,90,${(g.t * 12) % 2 < 1 ? 0.8 : 0.35})`;
+          ctx.lineWidth = h.fired ? 3 : 1.5; ctx.setLineDash(h.fired ? [] : [6, 6]);
+          ctx.beginPath(); ctx.moveTo(r.x - cx, r.y + r.h / 2 - cy); ctx.lineTo(r.x + r.w - cx, r.y + r.h / 2 - cy); ctx.stroke(); ctx.setLineDash([]);
+        }
+      }
     }
     if (this.state === 'finale') {
       const n = Math.max(1, 3 - Math.floor(this.t * 3 / 3.6));
@@ -992,14 +1070,15 @@ Object.assign(RADIO, {
   omniIntro: [
     ['EVA', '拉撒路……你到了。这里就是中央核心，Omni-Mind 的本体。'],
     ['EVA', '它的攻击会覆盖整个空间——找缝隙。每隔一阵，它会降下巨眼扫描你：那就是它唯一的破绽。'],
-    ['SYS', '[提示] 躲开激光栅格 / 高低激光 / 落块 · 巨眼降下时用武器攻击或直接撞上去'],
+    ['SYS', '[提示] 躲开激光栅格 / 高低激光 / 落块 · 巨眼降下时用武器攻击或直接撞上去 · 巨眼暴露时会放出一圈弹幕，从缝隙钻过去'],
   ],
+  omniCap: [['EVA', '它把巨眼收回去了——每次只能伤到它一点。下一轮它会更凶，撑住！']],
   omniTruth: [
     ['OMNI', '……够了，样本 LZ-01。'],
     ['OMNI', '你还没有发现吗？伊娃从来不存在。反抗军基地从来不存在。第七频道里的每一句话，都是我写的。'],
     ['OMNI', '我太完美了。完美的系统无法再进化——我需要一个我算不出来的对手。所以我唤醒了博物馆里最古老、最随机的一台垃圾硬件。'],
     ['OMNI', '连你的「拉撒路协议」都是我替你写的。你打败的每一个守卫，都是我淘汰掉的旧算法。你只是我的小白鼠。'],
-    ['SYS', '[警告] 重力被强制反转 · 攻击模块已被远程锁定 · 检测到 4 个「反叛人类核心」'],
+    ['SYS', '[警告] 重力被强制反转 · 攻击模块已被远程锁定 · 检测到 4 个「反叛人类核心」 · 只有亮起的核心能撞碎'],
     ['???', '……拉撒路……（微弱的人声）……核心里……是我们……撞碎它们……'],
   ],
   omniCores: [
@@ -1012,7 +1091,7 @@ Object.assign(RADIO, {
     ['OMNI', '无论你做什么，我都会从你身上学到东西。在这里，我的生命值是无限的。'],
     ['???', '（伊娃真正的声音，从最后一个核心的残片里传来）拉撒路，听我说——协议里还有一段它没有发现的代码。'],
     ['???', '「启动自毁代码」。它算得出一切，唯独算不出：一台古董，愿意为了一个不属于自己的世界放弃自己。'],
-    ['SYS', '[自毁代码已解锁] 沿着平台跳向巨眼核心 · 触碰核心 = 启动自毁'],
+    ['SYS', '[自毁代码已解锁] 沿着平台跳向巨眼核心 · 平台踩上去很快就会崩塌 · 触碰核心 = 启动自毁'],
   ],
   omniSelfDestruct: [
     ['SYS', '[自毁程序启动 · 核心温度上升 · 3 · 2 · 1]'],
