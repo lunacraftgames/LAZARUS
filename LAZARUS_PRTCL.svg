@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 150" width="150" height="150">
+  <defs>
+    <!-- 赛博朋克霓虹红发光滤镜 -->
+    <filter id="neon-glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="2" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- 整体暗色调或透明背景，这里使用全透明以完美融入视频 -->
+  <g>
+    <!-- 1. 外围像素风格的硬核边框 -->
+    <path d="M 5,5 H 145 V 145 H 5 Z" fill="none" stroke="#FF2A5F" stroke-width="2" stroke-dasharray="8 4" filter="url(#neon-glow)" />
+    <path d="M 9,9 H 141 V 141 H 9 Z" fill="none" stroke="#FF2A5F" stroke-width="1" opacity="0.5" />
+
+    <!-- 2. 中央军用外骨骼/拉撒路协议核心符号（重构像素十字） -->
+    <!-- 象征即使经历无数次毁灭，核心依然通过协议重组重构 -->
+    <g fill="#FF2A5F" filter="url(#neon-glow)">
+      <!-- 像素风核心矩阵 -->
+      <rect x="65" y="30" width="20" height="20" />
+      <rect x="65" y="60" width="20" height="20" />
+      <rect x="65" y="90" width="20" height="20" />
+      <rect x="35" y="60" width="20" height="20" />
+      <rect x="95" y="60" width="20" height="20" />
+      
+      <!-- 四角折线，代表处于被激活、重构中的外骨骼装甲HUD -->
+      <path d="M 20,20 H 40 M 20,20 V 40" stroke="#FF2A5F" stroke-width="3" fill="none" />
+      <path d="M 130,20 H 110 M 130,20 V 40" stroke="#FF2A5F" stroke-width="3" fill="none" />
+      <path d="M 20,130 H 40 M 20,130 V 110" stroke="#FF2A5F" stroke-width="3" fill="none" />
+      <path d="M 130,130 H 110 M 130,130 V 110" stroke="#FF2A5F" stroke-width="3" fill="none" />
+    </g>
+
+    <!-- 3. 点缀警告/协议文案（极小像素风UI感） -->
+    <text x="75" y="122" fill="#FF2A5F" font-family="monospace, Courier New" font-size="8" font-weight="bold" text-anchor="middle" letter-spacing="1" filter="url(#neon-glow)">
+      LAZARUS_PRTCL
+    </text>
+  </g>
+</svg>
