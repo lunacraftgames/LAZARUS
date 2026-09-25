@@ -278,9 +278,10 @@ const Game = {
     this.particles.add({ x, y, size: 6, grow: r * 5, life: 0.25, shape: 'ring', color: '#fc8', add: true });
     if (this.state === 'play' && Math.hypot(this.player.cx - x, this.player.cy - y) < r + 6) this.killPlayer('bomb');
   },
-  killPlayer() {
+  killPlayer(why) {
     if (this.state !== 'play') return;
     const p = this.player;
+    if (p.invulnT > 0 && why !== 'fall') return; // 赤影：闪现 / 回溯的一瞬间无敌（掉出世界除外）
     this.state = 'dead'; this.deadT = 0; p.dead = true; this.deaths++;
     Sound.sfx.death(); this.shake(12); Input.rumble(0.9, 0.7, 380); this.flash(0.35, '#f33'); this.freeze(0.08);
     this.particles.burst(p.cx, p.cy, 26, { color: ['#6b6848', '#86825a', '#2a2826', '#8a5234'], smin: 80, smax: 360, grav: 1000, lmin: 0.6, lmax: 1.2, szmin: 2, szmax: 5 });
@@ -781,7 +782,7 @@ const Game = {
     // 冲刺状态
     const dx = 232;
     ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(dx, 12, 118, 44);
-    ctx.font = '10px ' + MONO; ctx.fillStyle = 'rgba(200,200,200,0.7)'; ctx.fillText(p.C.jet ? 'SLAM' : 'DASH', dx + 10, 28); // 阿特拉斯的冲刺键是地面猛击
+    ctx.font = '10px ' + MONO; ctx.fillStyle = 'rgba(200,200,200,0.7)'; ctx.fillText(p.C.jet ? 'SLAM' : p.C.blink ? 'BLINK' : 'DASH', dx + 10, 28); // 阿特拉斯的冲刺键是地面猛击
     let col = '#6ff', label = 'READY';
     if (p.lockT > 0) { col = (this.t * 10) % 2 < 1 ? '#f35' : '#a13'; label = `LOCK ${p.lockT.toFixed(1)}s`; }
     else if (p.dashLock > 0) { col = (this.t * 10) % 2 < 1 ? '#f33' : '#a11'; label = `ALARM ${p.dashLock.toFixed(1)}s`; }
@@ -807,7 +808,14 @@ const Game = {
       if (many) this.addHot(wx, 12, ww, 44, () => { if (this.state === 'play') this.swapWeapon(); });
     }
     // 二段跳 / 粘液
-    if (p.C.jet) { // 阿特拉斯：喷气燃料
+    if (p.C.rewind) { // 赤影：回溯冷却
+      const jx = dx + 250;
+      ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(jx, 12, 64, 44);
+      ctx.font = '10px ' + MONO; ctx.fillStyle = 'rgba(200,200,200,0.7)'; ctx.fillText('REWIND', jx + 10, 28);
+      ctx.fillStyle = 'rgba(255,255,255,0.1)'; ctx.fillRect(jx + 10, 34, 44, 6);
+      ctx.fillStyle = p.rewindCd > 0 ? '#733' : '#ff4d6d'; ctx.fillRect(jx + 10, 34, 44 * (1 - (p.rewindCd || 0) / p.C.rewindCd), 6);
+      ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(255,210,120,0.8)'; ctx.fillText(Input.glyph('swap'), jx + 58, 28); ctx.textAlign = 'left';
+    } else if (p.C.jet) { // 阿特拉斯：喷气燃料
       const jx = dx + 250;
       ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(jx, 12, 64, 44);
       ctx.font = '10px ' + MONO; ctx.fillStyle = 'rgba(200,200,200,0.7)'; ctx.fillText(p.slimeT > 0 ? 'SLIME' : 'FUEL', jx + 10, 28);

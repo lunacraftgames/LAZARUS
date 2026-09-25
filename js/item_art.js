@@ -349,7 +349,23 @@ const ItemArt = (() => {
     ctx.restore();
     glow(ctx, 60 + pump, 0, 50, '255,190,80', 0.2);
   }
-  const ART = { fist: { fn: fist, rot: 0, s: 0.95 }, brush: { fn: brush, rot: 0, s: 1 }, sabre: { fn: sabre, rot: -0.12, s: 0.95 }, relicBlade: { fn: relic, rot: -0.1, s: 0.9 }, dashStrike: { fn: dash, rot: 0, s: 1 }, doubleJump: { fn: thruster, rot: 0, s: 0.85 }, flintlock: { fn: flintlock, rot: -0.06, s: 0.95 }, sporeGun: { fn: spore, rot: -0.05, s: 1.05 } };
+  // ---------------- 赤影的数据刃 ----------------
+  function datablade(ctx, t) {
+    const j = Math.floor(t * 12) % 5;
+    ctx.save(); ctx.globalAlpha = 0.9;
+    // 刃身：半透明红色，边缘像素抖动
+    const blade = new Path2D(); blade.moveTo(-70, 10); blade.lineTo(90, -8); blade.lineTo(110, -2); blade.lineTo(-70, 20); blade.closePath();
+    ctx.fillStyle = lg(ctx, -70, 0, 110, 0, [[0, 'rgba(120,10,30,0.9)'], [0.6, 'rgba(255,77,109,0.85)'], [1, 'rgba(255,220,230,0.95)']]); ctx.fill(blade);
+    ctx.strokeStyle = 'rgba(255,180,200,0.9)'; ctx.lineWidth = 2; ctx.stroke(blade);
+    for (let k = 0; k < 9; k++) { const px = -60 + k * 19 + ((k * 7 + j * 3) % 6), py = 6 - k * 1.6 + ((k + j) % 3 - 1) * 8; ctx.fillStyle = k % 2 ? 'rgba(255,77,109,0.8)' : 'rgba(255,255,255,0.7)'; ctx.fillRect(px, py, 5, 5); }
+    // 错位切片
+    ctx.fillStyle = 'rgba(80,220,255,0.35)'; ctx.fillRect(-40 + j * 6, -2, 60, 3);
+    // 握柄
+    ctx.fillStyle = '#2a0f16'; ctx.fillRect(-110, 6, 44, 18); ctx.fillStyle = '#ff4d6d'; ctx.fillRect(-72, 2, 6, 26);
+    ctx.restore();
+    glow(ctx, 40, 0, 70, '255,77,109', 0.22);
+  }
+  const ART = { datablade: { fn: datablade, rot: -0.1, s: 0.95 }, fist: { fn: fist, rot: 0, s: 0.95 }, brush: { fn: brush, rot: 0, s: 1 }, sabre: { fn: sabre, rot: -0.12, s: 0.95 }, relicBlade: { fn: relic, rot: -0.1, s: 0.9 }, dashStrike: { fn: dash, rot: 0, s: 1 }, doubleJump: { fn: thruster, rot: 0, s: 0.85 }, flintlock: { fn: flintlock, rot: -0.06, s: 0.95 }, sporeGun: { fn: spore, rot: -0.05, s: 1.05 } };
 
   function draw(ctx, key, cx, cy, t, own) {
     const A = ART[key]; if (!A) return false;

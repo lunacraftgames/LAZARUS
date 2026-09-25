@@ -60,7 +60,7 @@ Object.assign(Game, {
     return p;
   },
   drawDiffPicker(ctx, newRun) {
-    const x0 = 60, y0 = 112 + CHAR_ORDER.length * 66 + 20, bw = 122, bh = 30, gap = 6; // 放在角色列表下面
+    const x0 = 60, y0 = 112 + CHAR_ORDER.length * CHAR_ROW + 20, bw = 122, bh = 30, gap = 6; // 放在角色列表下面
     ctx.fillStyle = 'rgba(220,220,210,0.8)'; ctx.font = 'bold 14px ' + FONT;
     ctx.fillText(newRun ? tr('难度') : tr('当前周目难度'), x0, y0);
     const cur = newRun ? this.diffSel : Math.max(0, DIFFS.findIndex((d) => d.id === this.diff));
@@ -87,24 +87,24 @@ Object.assign(Game, {
 
     // 左侧：角色列表
     CHAR_ORDER.forEach((id, i) => {
-      const C = charDef(id), open = C.unlocked(), sel = i === this.charSel, x = 60, y = 112 + i * 66, w = 250, h = 60; // 三个角色：每行 66 像素
+      const C = charDef(id), open = C.unlocked(), sel = i === this.charSel, x = 60, y = 112 + i * CHAR_ROW, w = 250, h = CHAR_ROW - 6; // 每行高度随角色数收紧
       ctx.fillStyle = sel ? 'rgba(120,255,230,0.12)' : 'rgba(255,255,255,0.04)'; ctx.fillRect(x, y, w, h);
       if (sel) { ctx.fillStyle = C.color; ctx.fillRect(x, y, 4, h); }
       this.addHot(x, y, w, h, () => { if (this.charSel === i) this.charPick(i); else this.setCharSel(i); }, () => { this.charSel = i; });
       // 小头像
-      ctx.save(); ctx.beginPath(); ctx.rect(x + 8, y + 6, 48, 48); ctx.clip();
-      ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(x + 8, y + 6, 48, 48);
+      ctx.save(); ctx.beginPath(); ctx.rect(x + 8, y + 5, 48, h - 10); ctx.clip();
+      ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(x + 8, y + 5, 48, h - 10);
       if (!open) ctx.filter = 'brightness(0) opacity(0.7)';
       const p = this.charPreview(id), pc = p.cling; p.cling = null; p.onGround = true;
-      ctx.translate(x + 32, y + 51); ctx.scale(1.4, 1.4); p.drawBody(ctx, -p.w / 2, -p.h, 1, 1, 1, { t: sel ? t : 0, radio: null });
+      ctx.translate(x + 32, y + h - 4); ctx.scale(1.2, 1.2); p.drawBody(ctx, -p.w / 2, -p.h, 1, 1, 1, { t: sel ? t : 0, radio: null });
       p.cling = pc; ctx.filter = 'none'; ctx.restore();
       ctx.fillStyle = open ? (sel ? '#fff' : 'rgba(230,230,220,0.8)') : 'rgba(160,160,160,0.6)'; ctx.font = (sel ? 'bold ' : '') + '18px ' + FONT;
-      ctx.fillText(open ? C.name : '？？？', x + 68, y + 24);
-      ctx.fillStyle = 'rgba(200,190,160,0.6)'; ctx.font = '11px ' + MONO; ctx.fillText(open ? (I18N.en ? C.model.split(' ')[0] : C.en) : 'LOCKED', x + 68, y + 39); // 英文模式下名字已经是英文，这里改写型号
+      ctx.fillText(open ? C.name : '？？？', x + 68, y + 21);
+      ctx.fillStyle = 'rgba(200,190,160,0.6)'; ctx.font = '11px ' + MONO; ctx.fillText(open ? (I18N.en ? C.model.split(' ')[0] : C.en) : 'LOCKED', x + 68, y + 34); // 英文模式下名字已经是英文，这里改写型号
       ctx.font = '11px ' + FONT;
-      if (!open) { ctx.fillStyle = 'rgba(255,160,120,0.8)'; ctx.fillText('🔒 未解锁', x + 68, y + 53); }
-      else if (!newRun && id === this.charId) { ctx.fillStyle = '#7ff'; ctx.fillText(Save.load() ? '✔ 当前周目' : '✔ 最近使用', x + 68, y + 53); }
-      else if (newRun && id === (Inventory.p.char || 'lazarus')) { ctx.fillStyle = 'rgba(120,255,230,0.7)'; ctx.fillText('上次使用', x + 68, y + 53); }
+      if (!open) { ctx.fillStyle = 'rgba(255,160,120,0.8)'; ctx.fillText('🔒 未解锁', x + 68, y + 47); }
+      else if (!newRun && id === this.charId) { ctx.fillStyle = '#7ff'; ctx.fillText(Save.load() ? '✔ 当前周目' : '✔ 最近使用', x + 68, y + 47); }
+      else if (newRun && id === (Inventory.p.char || 'lazarus')) { ctx.fillStyle = 'rgba(120,255,230,0.7)'; ctx.fillText('上次使用', x + 68, y + 47); }
     });
 
     // 右侧：详情
