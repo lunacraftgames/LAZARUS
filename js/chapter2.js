@@ -518,7 +518,7 @@ class Incubator {
     if (this.state === 'exposed') return `核心暴露  ${Math.max(0, 5 - this.t).toFixed(1)}s`;
     if (this.state === 'overload') return '过载中……';
     if (!this.wave || this.state === 'rest') return '孵化准备中';
-    return `第 ${this.wave} 波 · 剩余 ${left}`;
+    return tr('第 %{w} 波 · 剩余 %{n}', { w: this.wave, n: left });
   }
   body() { return { x: this.x - 70, y: this.y - 70, w: 140, h: 140 }; }
   core() { return { x: this.x - 28, y: this.y - 8, w: 56, h: 52 }; }

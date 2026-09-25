@@ -35,10 +35,10 @@ const KEY_NAMES = {
 };
 function keyName(code) {
   if (!code) return '—';
-  if (KEY_NAMES[code]) return KEY_NAMES[code];
+  if (KEY_NAMES[code]) return tr(KEY_NAMES[code]);
   if (/^Key[A-Z]$/.test(code)) return code.slice(3);
   if (/^Digit\d$/.test(code)) return code.slice(5);
-  if (/^Numpad/.test(code)) return '小键盘' + code.slice(6);
+  if (/^Numpad/.test(code)) return tr('小键盘') + code.slice(6);
   return code;
 }
 const uniq = (a) => [...new Set(a.filter(Boolean))];
@@ -236,14 +236,14 @@ const Input = {
         const a = `${keyName(k.left[0])} ${keyName(k.right[0])}`, b2 = k.left[1] && k.right[1] ? ` / ${keyName(k.left[1])} ${keyName(k.right[1])}` : '';
         return a + b2;
       }
-      if (k[action]) { const first = k[action].find(Boolean); return first ? keyName(first) : '未绑定'; }
+      if (k[action]) { const first = k[action].find(Boolean); return first ? keyName(first) : tr('未绑定'); }
       return action;
     }
     const g = PAD_GLYPHS[this.device] || PAD_GLYPHS.generic;
     switch (action) {
-      case 'move': return '左摇杆 / 十字键';
-      case 'select': return '十字键 ↑↓';
-      case 'tab': return '十字键 ←→';
+      case 'move': return tr('左摇杆 / 十字键');
+      case 'select': return tr('十字键 ↑↓');
+      case 'tab': return tr('十字键 ←→');
       case 'down': return '↓';
       case 'up': return '↑';
       case 'restart': return '—';
@@ -257,7 +257,7 @@ const Input = {
     return c && c[i] ? c[i] : null;
   },
   // 把文本中的 {jump} {dash} {attack} {move} {down} {inv} {pause} {confirm} {back} {skip} 替换为当前设备的按键
-  fmt(text) { return text.replace(/\{(\w+)\}/g, (m, a) => '[' + this.glyph(a) + ']'); },
+  fmt(text) { return tr(text).replace(/\{(\w+)\}/g, (m, a) => '[' + this.glyph(a) + ']'); },
 
   // ---------------- 震动 ----------------
   rumble(strong, weak, ms) {

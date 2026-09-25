@@ -43,18 +43,18 @@ Object.assign(Game, {
         if (btn == null) { this.keyNote('已取消'); return; }
         const moved = Input.bindPad(R.a, btn);
         Sound.sfx.equip();
-        this.keyNote(`「${R.n}」→ ${this.padLabel(btn)}` + (moved ? `（已从「${KEY_ACTION_NAMES[moved]}」移除）` : ''));
+        this.keyNote(tr('「%{a}」→ %{k}', { a: tr(R.n), k: tr(this.padLabel(btn)) }) + (moved ? tr('（已从「%{a}」移除）', { a: tr(KEY_ACTION_NAMES[moved]) }) : ''));
       });
       return;
     }
     this.keyWait = { row, col, kind: 'key' }; Sound.sfx.select();
     const cb = (code) => {
-      if (code && code.startsWith('reserved:')) { this.keyNote(`${keyName(code.slice(9))} 是菜单专用键，不能改绑。请按其他键（Esc 取消）`); Input.startCapture('key', cb); return; }
+      if (code && code.startsWith('reserved:')) { this.keyNote(tr('%{k} 是菜单专用键，不能改绑。请按其他键（Esc 取消）', { k: tr(keyName(code.slice(9))) })); Input.startCapture('key', cb); return; }
       this.keyWait = null;
       if (!code) { this.keyNote('已取消'); return; }
       const moved = Input.bindKey(R.a, col, code);
       Sound.sfx.equip();
-      this.keyNote(`「${R.n}」→ ${keyName(code)}` + (moved ? `（已从「${KEY_ACTION_NAMES[moved]}」移除）` : ''));
+      this.keyNote(tr('「%{a}」→ %{k}', { a: tr(R.n), k: tr(keyName(code)) }) + (moved ? tr('（已从「%{a}」移除）', { a: tr(KEY_ACTION_NAMES[moved]) }) : ''));
     };
     Input.startCapture('key', cb);
   },
@@ -69,14 +69,14 @@ Object.assign(Game, {
     if (I.hit('mr')) { this.keyCol = Math.min(3, this.keyCol + 1); Sound.sfx.select(); }
     const col = Math.min(this.keyCol, maxCol);
     if (I.hit('confirm')) this.activateKeyCell(this.keyRow, col);
-    if (I.code('Delete') && !R.type && col < 3) { Input.clearKey(R.a, col); Sound.sfx.select(); this.keyNote(`已清除「${R.n}」的第 ${col + 1} 个键位`); }
+    if (I.code('Delete') && !R.type && col < 3) { Input.clearKey(R.a, col); Sound.sfx.select(); this.keyNote(tr('已清除「%{a}」的第 %{n} 个键位', { a: tr(R.n), n: col + 1 })); }
     if (I.hit('back') || I.hit('pause')) { Sound.sfx.select(); this.closeKeys(); }
   },
   renderKeys(ctx) {
     drawBackground(ctx, { x: this.t * 8, y: 0 }, THEMES.gallery, this.t);
     ctx.fillStyle = 'rgba(0,0,0,0.75)'; ctx.fillRect(0, 0, VW, VH);
     ctx.fillStyle = '#f2ead6'; ctx.font = 'bold 26px ' + FONT; ctx.fillText('按键设置', 60, 48);
-    ctx.fillStyle = 'rgba(200,190,160,0.6)'; ctx.font = '12px ' + MONO; ctx.fillText('CONTROLS', 172, 48);
+    ctx.fillStyle = 'rgba(200,190,160,0.6)'; ctx.font = '12px ' + MONO; if (!I18N.en) ctx.fillText('CONTROLS', 172, 48);
     ctx.font = '11px ' + FONT; ctx.fillStyle = 'rgba(200,200,200,0.55)';
     ctx.fillText('Esc / Enter / 退格 为菜单专用键，不能改绑 · 手柄的移动固定为左摇杆和十字键，Start 固定为暂停', 60, 70);
     // 表头
@@ -91,7 +91,7 @@ Object.assign(Game, {
       if (R.type) {
         ctx.fillStyle = selRow ? '#7ff' : R.type === 'reset' ? '#f96' : '#e8e4d8';
         let label = R.n;
-        if (R.type === 'upJump') label += `：${Input.binds.upJump ? '开' : '关'}`;
+        if (R.type === 'upJump') label = tr(label) + tr('：%{v}', { v: tr(Input.binds.upJump ? '开' : '关') });
         ctx.fillText((selRow ? '▶ ' : '') + label, 66, y + 18);
         this.addHot(56, y, 420, 26, () => this.activateKeyCell(i, 0), () => { if (!this.keyWait) { this.keyRow = i; this.keyCol = 0; } });
         return;

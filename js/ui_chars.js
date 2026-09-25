@@ -45,7 +45,7 @@ Object.assign(Game, {
     drawBackground(ctx, { x: t * 10, y: 0 }, THEMES.hall, t);
     ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0, 0, VW, VH);
     ctx.fillStyle = '#f2ead6'; ctx.font = 'bold 28px ' + FONT; ctx.fillText(newRun ? '选择角色' : '角色', 60, 64);
-    ctx.fillStyle = 'rgba(200,190,160,0.6)'; ctx.font = '12px ' + MONO; ctx.fillText(newRun ? 'NEW GAME · SELECT YOUR UNIT' : 'UNITS', 60 + (newRun ? 128 : 72), 64);
+    ctx.fillStyle = 'rgba(200,190,160,0.6)'; ctx.font = '12px ' + MONO; if (!I18N.en) ctx.fillText(newRun ? 'NEW GAME · SELECT YOUR UNIT' : 'UNITS', 60 + (newRun ? 128 : 72), 64);
     ctx.fillStyle = newRun ? 'rgba(255,210,120,0.85)' : 'rgba(200,200,200,0.6)'; ctx.font = '13px ' + FONT;
     ctx.fillText(newRun ? '角色只能在这里（新的游戏开始前）选择，选定后整个周目都不能更换。' : '这里只能查看。角色只能在开始「新的游戏」时选择，游戏中途不能更换。', 60, 92);
 
@@ -64,7 +64,7 @@ Object.assign(Game, {
       p.cling = pc; ctx.filter = 'none'; ctx.restore();
       ctx.fillStyle = open ? (sel ? '#fff' : 'rgba(230,230,220,0.8)') : 'rgba(160,160,160,0.6)'; ctx.font = (sel ? 'bold ' : '') + '20px ' + FONT;
       ctx.fillText(open ? C.name : '？？？', x + 88, y + 34);
-      ctx.fillStyle = 'rgba(200,190,160,0.6)'; ctx.font = '11px ' + MONO; ctx.fillText(open ? C.en : 'LOCKED', x + 88, y + 52);
+      ctx.fillStyle = 'rgba(200,190,160,0.6)'; ctx.font = '11px ' + MONO; ctx.fillText(open ? (I18N.en ? C.model.split(' ')[0] : C.en) : 'LOCKED', x + 88, y + 52); // 英文模式下名字已经是英文，这里改写型号
       ctx.font = '11px ' + FONT;
       if (!open) { ctx.fillStyle = 'rgba(255,160,120,0.8)'; ctx.fillText('🔒 未解锁', x + 88, y + 70); }
       else if (!newRun && id === this.charId) { ctx.fillStyle = '#7ff'; ctx.fillText(Save.load() ? '✔ 当前周目' : '✔ 最近使用', x + 88, y + 70); }
@@ -94,22 +94,31 @@ Object.assign(Game, {
 
     const tx = dx + 240;
     ctx.fillStyle = open ? C.color : '#888'; ctx.font = 'bold 26px ' + FONT; ctx.fillText(open ? C.name : '？？？', tx, 146);
-    ctx.fillStyle = 'rgba(200,190,160,0.7)'; ctx.font = '12px ' + MONO; ctx.fillText(open ? `${C.en} · ${C.model}` : 'LOCKED', tx, 166);
+    ctx.fillStyle = 'rgba(200,190,160,0.7)'; ctx.font = '12px ' + MONO; ctx.fillText(open ? (I18N.en ? tr(C.model) : `${C.en} · ${C.model}`) : 'LOCKED', tx, 166);
     // 属性条
+    ctx.font = '13px ' + FONT;
+    const lw = Math.max(44, ...Object.keys(C.stats).map((k) => ctx.measureText(k).width + 10)); // 属性名的宽度（英文更长）
     Object.entries(C.stats).forEach(([k, v], i) => {
       const y = 192 + i * 24;
-      ctx.fillStyle = 'rgba(220,220,210,0.75)'; ctx.font = '13px ' + FONT; ctx.fillText(k, tx, y + 10);
-      for (let j = 0; j < 5; j++) { ctx.fillStyle = open && j < v ? C.color : 'rgba(255,255,255,0.1)'; ctx.fillRect(tx + 44 + j * 34, y, 30, 10); }
+      ctx.fillStyle = 'rgba(220,220,210,0.75)'; ctx.fillText(k, tx, y + 10);
+      for (let j = 0; j < 5; j++) { ctx.fillStyle = open && j < v ? C.color : 'rgba(255,255,255,0.1)'; ctx.fillRect(tx + lw + j * 34, y, 30, 10); }
     });
     // 背景故事 + 技能
     ctx.font = '13px ' + FONT; ctx.fillStyle = '#e6dcc0';
-    const bio = open ? C.bio : `尚未解锁。${C.unlockText || ''}`;
+    const bio = open ? C.bio : tr('尚未解锁。%{t}', { t: tr(C.unlockText || '') });
     wrapText(ctx, bio, dw).slice(0, 3).forEach((l, i) => ctx.fillText(l, dx, 342 + i * 20));
-    if (open) C.skills.forEach(([k, v], i) => {
-      const y = 412 + i * 22;
-      ctx.fillStyle = C.color; ctx.font = 'bold 13px ' + FONT; ctx.fillText('◆ ' + k, dx, y);
-      ctx.fillStyle = 'rgba(220,220,210,0.8)'; ctx.font = '12px ' + FONT; ctx.fillText(wrapText(ctx, v, dw - 110)[0], dx + 100, y);
-    });
+    if (open) {
+      ctx.font = 'bold 13px ' + FONT;
+      const kw = Math.max(100, ...C.skills.map(([k]) => ctx.measureText('◆ ' + k).width + 12)); // 技能名一列的宽度
+      C.skills.forEach(([k, v], i) => {
+        const y = 404 + i * 26;
+        ctx.fillStyle = C.color; ctx.font = 'bold 13px ' + FONT; ctx.fillText('◆ ' + k, dx, y);
+        ctx.fillStyle = 'rgba(220,220,210,0.8)'; ctx.font = '12px ' + FONT;
+        let ls = wrapText(ctx, v, dw - kw);
+        if (ls.length > 1) { ctx.font = '11px ' + FONT; ls = wrapText(ctx, v, dw - kw).slice(0, 2); } // 放不下一行就换小一号的字，还放不下再分两行
+        ls.forEach((l, j) => ctx.fillText(l, dx + kw, y + (ls.length > 1 ? j * 12 - 5 : 0)));
+      });
+    }
 
     const hint = newRun ? [{ k: 'select' }, '选择', { k: 'confirm' }, open ? '用这个角色开始' : '未解锁', { k: 'back' }, '返回'] : [{ k: 'select' }, '查看', { k: 'back' }, '返回'];
     drawHintLine(ctx, 60, VH - 26, hint);
@@ -117,7 +126,7 @@ Object.assign(Game, {
       const bw = 150, bx = VW - 96 - 24 - bw - 12, by = VH - 44;
       ctx.fillStyle = open ? 'rgba(120,255,230,0.18)' : 'rgba(255,255,255,0.05)'; ctx.fillRect(bx, by, bw, 30);
       ctx.strokeStyle = open ? C.color : '#555'; ctx.strokeRect(bx + 0.5, by + 0.5, bw - 1, 29);
-      ctx.fillStyle = open ? '#fff' : '#888'; ctx.font = 'bold 13px ' + FONT; ctx.textAlign = 'center'; ctx.fillText(open ? `▶ 用${C.name}开始` : '🔒 未解锁', bx + bw / 2, by + 20); ctx.textAlign = 'left';
+      ctx.fillStyle = open ? '#fff' : '#888'; ctx.font = 'bold 13px ' + FONT; ctx.textAlign = 'center'; ctx.fillText(open ? tr('▶ 用%{name}开始', { name: tr(C.name) }) : '🔒 未解锁', bx + bw / 2, by + 20); ctx.textAlign = 'left';
       this.addHot(bx, by, bw, 30, () => this.charPick(this.charSel));
     }
     this.drawBackButton(ctx, () => { Sound.sfx.select(); this.toTitle(); });
