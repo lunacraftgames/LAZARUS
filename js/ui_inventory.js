@@ -57,7 +57,7 @@ Object.assign(Game, {
     ctx.textAlign = 'right'; ctx.font = '11px ' + FONT;
     ctx.fillStyle = Inventory.backend.name === 'steam' ? '#8fe' : 'rgba(255,200,120,0.75)';
     ctx.fillText(Inventory.backend.name === 'steam' ? '已连接 Steam 库存' : '本地模拟库存 · 正式版将与 Steam 库存同步', VW - 24, 30);
-    const tradable = Inventory.p.items.length;
+    const tradable = Inventory.p.items.filter((i) => DEF_BY_ID[i.def] && DEF_BY_ID[i.def].tradable).length;
     ctx.fillStyle = 'rgba(200,200,200,0.6)'; ctx.fillText(`可交易物品 ${tradable} 件 · 累计游玩 ${Math.floor(Inventory.p.playtime / 60)} 分钟`, VW - 24, 48);
     ctx.textAlign = 'left';
     // 标签页
@@ -206,7 +206,10 @@ Object.assign(Game, {
       tx += w + 8;
     }
     ctx.fillStyle = 'rgba(255,210,120,0.8)'; ctx.font = '13px ' + FONT;
-    ctx.fillText('重玩时可使用所有已解锁的武器与能力。零重构通关可获得额外掉落。', 70, 118);
+    ctx.fillText('重玩时可使用所有已解锁的武器与能力。零重构通关可获得额外掉落。', 70, 110);
+    const rw = ITEMDEFS.find((d) => d.chipReward === ch), cg = this.chipLogIn(ch), ct = chipTotal(ch);
+    ctx.fillStyle = cg >= ct ? '#7f9' : 'rgba(255,210,120,0.8)';
+    ctx.fillText(`本章记忆芯片收藏 ${cg} / ${ct}` + (rw ? (cg >= ct ? ` · 已获得专属外观「${rw.name}」` : ` · 集齐奖励：专属外观「${rw.name}」`) : '') + (Inventory.p.hiddenEnd ? ' · 隐藏结局已解锁' : ' · 四章全部集齐解锁隐藏结局'), 70, 130);
     const list = this.selList(), half = Math.ceil(list.length / 2);
     list.forEach(({ L, i }, k) => {
       const col = k < half ? 0 : 1, row = k % half;
@@ -218,7 +221,7 @@ Object.assign(Game, {
       ctx.fillStyle = sel ? '#fff' : 'rgba(230,230,220,0.75)'; ctx.font = (sel ? 'bold ' : '') + '18px ' + FONT; ctx.fillText(L.name, x + 78, y + 26);
       ctx.fillStyle = 'rgba(200,190,160,0.55)'; ctx.font = '11px ' + MONO; ctx.fillText(L.en, x + 78, y + 43);
       if (L._chips == null) { const B = makeBuilder(L.w, L.h); L.build(B); L._chips = B.grid.flat().filter((c) => c === 'o').length; }
-      const got = [...this.chips].filter((c) => c.startsWith(L.id + '#')).length;
+      const got = Object.keys(Inventory.p.chipLog).filter((c) => c.startsWith(L.id + '#') && chipValid(c)).length; // 显示跨周目累计的收藏进度，方便补齐
       ctx.textAlign = 'right'; ctx.font = '12px ' + FONT;
       if (!L.boss) { ctx.fillStyle = '#fc6'; ctx.fillText(`芯片 ${got}/${L._chips}`, x + w - 14, y + 24); }
       const tag = L.weapon; if (tag) { ctx.fillStyle = '#f96'; ctx.font = '11px ' + FONT; ctx.fillText(tag, x + w - 14, y + 42); }

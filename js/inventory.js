@@ -50,6 +50,7 @@ const ITEMDEFS = [
   { id: 2004, slot: 'paint', rarity: 'uncommon', name: '锈蚀红', desc: '被酸雨浸泡过的外壳，意外地好看。', tradable: true, marketable: true, pal: { a: '#7a3a2a', b: '#9a5238', d: '#2a1a16', e: '#5e2e22', k: '#b8952e', pack: '#4a2a20', stripe: '#222', visor: '#fc6' } },
   { id: 2005, slot: 'paint', rarity: 'rare', name: '午夜潜行', desc: '夜间渗透特装。连无人机都要多看两眼。', tradable: true, marketable: true, pal: { a: '#2a2e36', b: '#3e4450', d: '#111316', e: '#20242a', k: '#5a3aa0', pack: '#1a1c22', stripe: '#8a5aff', visor: '#c8f' } },
   { id: 2006, slot: 'paint', rarity: 'legendary', name: '鎏金纪念款', desc: '博物馆开馆庆典的限量展品涂装。全球仅存一台……现在，也许不止一台。', tradable: true, marketable: true, pal: { a: '#b8912e', b: '#e8c860', d: '#4a3a12', e: '#8a6a1e', k: '#fff0b0', pack: '#6a5018', stripe: '#fff', visor: '#fff' } },
+  { id: 2008, slot: 'paint', rarity: 'bound', chipReward: 1, name: '策展人', desc: '【集齐第一章全部记忆芯片】博物馆修复部的黄铜与胡桃木配色。每一枚芯片，都被你按编号归还了原位。', tradable: false, marketable: false, pal: { a: '#5a3e26', b: '#7a5634', d: '#20160e', e: '#4a321e', k: '#d8b060', pack: '#3a2818', stripe: '#e8c878', visor: '#ffe0a0' } },
   { id: 2007, slot: 'paint', rarity: 'legendary', name: 'Ω · 数据体', desc: '外壳上浮现出不属于任何人类工厂的纹路。它在……自我生长？', tradable: true, marketable: true, glitch: true, pal: { a: '#1a2a2a', b: '#2aff9a', d: '#081010', e: '#0e1a1a', k: '#2aff9a', pack: '#102020', stripe: '#2aff9a', visor: '#f33' } },
 
   // ---------- 冲刺拖尾 ----------
@@ -57,12 +58,14 @@ const ITEMDEFS = [
   { id: 3001, slot: 'trail', rarity: 'common', name: '尘埃', desc: '从展厅地板上扬起的灰尘。', tradable: true, marketable: true, color: '#c9b88a' },
   { id: 3002, slot: 'trail', rarity: 'uncommon', name: '余烬', desc: '过热的推进器喷出的火星。', tradable: true, marketable: true, color: '#fa4' },
   { id: 3003, slot: 'trail', rarity: 'rare', name: '极光', desc: '穹顶碎玻璃折射出的光谱。', tradable: true, marketable: true, rainbow: true, color: '#f6f' },
+  { id: 3005, slot: 'trail', rarity: 'bound', chipReward: 2, name: '孢子雾', desc: '【集齐第二章全部记忆芯片】冲刺时散开一团淡绿色的孢子。育婴室终于承认，你也是它的孩子。', tradable: false, marketable: false, color: '#9f6' },
   { id: 3004, slot: 'trail', rarity: 'legendary', name: '数据流', desc: '你身后留下的，是一串不断自我复制的代码。', tradable: true, marketable: true, color: '#2f9', glyph: true },
 
   // ---------- 重构特效 ----------
   { id: 4000, slot: 'rebuild', rarity: 'bound', def: true, name: '标准重构', desc: '拉撒路协议默认的重构界面。', tradable: false, marketable: false, color: '#7ff', title: 'LAZARUS PROTOCOL', sub: '正在重写底层代码 · 于最近备份点重构' },
   { id: 4001, slot: 'rebuild', rarity: 'uncommon', name: '红色警报', desc: '重构时拉响全馆警报。反正也没人听得见。', tradable: true, marketable: true, color: '#f55', title: 'CRITICAL FAILURE', sub: '核心损毁 · 紧急重构程序启动' },
   { id: 4002, slot: 'rebuild', rarity: 'rare', name: '金箔重构', desc: '用博物馆修复文物的金箔工艺重新拼合你。', tradable: true, marketable: true, color: '#fc6', title: 'RESTORATION', sub: '文物修复中 · 请勿触摸展品' },
+  { id: 4004, slot: 'rebuild', rarity: 'bound', chipReward: 3, name: '版本回滚', desc: '【集齐第三章全部记忆芯片】你不是在复活，只是回滚到了上一个稳定版本。所有残影都已归档。', tradable: false, marketable: false, color: '#6af', title: 'ROLLBACK', sub: '回滚至上一个稳定版本 · 残影已归档' },
   { id: 4003, slot: 'rebuild', rarity: 'legendary', name: '万脑注视', desc: '每次重构时，你都感觉有什么东西在记录。', tradable: true, marketable: true, color: '#f33', omega: true, title: 'Ω · ITERATION', sub: '样本重构中 · 数据已记录' },
 
   // ---------- 残刃外观 ----------
@@ -70,6 +73,7 @@ const ITEMDEFS = [
   { id: 5001, slot: 'blade', rarity: 'common', name: '青铜', desc: '仿古青铜剑的配色。', tradable: true, marketable: true, blade: '#9a7a3a', edge: '#e0c080', hilt: '#4a3218', arc: '240,200,120' },
   { id: 5002, slot: 'blade', rarity: 'uncommon', name: '抛光钢', desc: '有人花了一整晚把它磨亮。', tradable: true, marketable: true, blade: '#d0d8de', edge: '#ffffff', hilt: '#2a2a2a', arc: '255,255,255' },
   { id: 5003, slot: 'blade', rarity: 'rare', name: '黑曜石', desc: '火山玻璃打制的刃。锋利，也易碎。', tradable: true, marketable: true, blade: '#1e1a2a', edge: '#b58aff', hilt: '#5a3aa0', arc: '180,130,255' },
+  { id: 5005, slot: 'blade', rarity: 'bound', chipReward: 4, name: '无瑕', desc: '【集齐第四章全部记忆芯片】用神座的白金外壳重铸的刃。完美的东西，终于有了一道划痕。', tradable: false, marketable: false, blade: '#f0ece0', edge: '#ffffff', hilt: '#c9a040', arc: '255,240,200' },
   { id: 5004, slot: 'blade', rarity: 'legendary', name: '特斯拉线圈', desc: '刃身缠绕着 1891 年的高压电。巨像应该认得它。', tradable: true, marketable: true, blade: '#b8743a', edge: '#aff', hilt: '#3a3a3a', arc: '140,240,255', electric: true },
 
   // ---------- 展品收藏（纯收藏，可交易） ----------
@@ -152,7 +156,8 @@ const SteamBackend = {
     const S = window.LAZARUS_STEAM;
     if (!S || !S.getItems) return;
     S.getItems().then((list) => {
-      Inventory.p.items = list.filter((x) => DEF_BY_ID[x.defId]).map((x) => ({ iid: x.itemId, def: x.defId, src: 'steam', t: 0 }));
+      const bound = Inventory.p.items.filter((i) => DEF_BY_ID[i.def] && !DEF_BY_ID[i.def].tradable); // 芯片收藏奖励等账号绑定物品只存在于本地存档
+      Inventory.p.items = bound.concat(list.filter((x) => DEF_BY_ID[x.defId]).map((x) => ({ iid: x.itemId, def: x.defId, src: 'steam', t: 0 })));
       Inventory.save();
     }).catch(() => {});
   },
@@ -167,6 +172,7 @@ const Inventory = {
       v: 1, abilities: {}, items: [], nextIid: 1,
       equipped: { paint: 2000, trail: 3000, rebuild: 4000, blade: 5000 },
       ch1Clear: false, playtime: 0, nextPlaytimeDrop: 30 * 60, seen: {},
+      chipLog: {}, chipDone: {}, hiddenEnd: false, // 记忆芯片收藏（跨周目累计）、已发放的章节收藏奖励、隐藏结局是否解锁
     }, d || {});
     if (this.backend.sync) this.backend.sync();
   },

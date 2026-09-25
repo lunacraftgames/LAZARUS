@@ -41,6 +41,8 @@ const Game = {
     this.setupTouch();
     const s = Save.load();
     if (s) { this.deaths = s.deaths || 0; this.chips = new Set(s.chips || []); this.runTime = s.time || 0; }
+    for (const id of this.chips) Inventory.p.chipLog[id] = 1; // 旧存档：把本周目已收集的芯片计入收藏
+    this.checkChipRewards();
     this.toTitle();
     let last = performance.now(), acc = 0;
     const STEP = 1 / 120;
@@ -92,6 +94,7 @@ const Game = {
     m.push({ label: cont ? '新的游戏' : '开始游戏', act: 'new' });
     if (Inventory.p.ch1Clear) m.push({ label: '章节选择', act: 'select' });
     this.titleCh = cont ? chapterOf(LEVELS[s.level]) : 1;
+    if (Inventory.p.hiddenEnd) m.push({ label: '隐藏结局 · 记忆全集', act: 'hidden' });
     m.push({ label: '仓库 · 武器与外观', act: 'inv' });
     m.push({ label: '按键设置', act: 'keys' });
     m.push({ label: '声音设置', act: 'audio' });
@@ -191,7 +194,30 @@ const Game = {
     this.particles.burst(c.x + 8, c.y + 8, 18, { color: ['#fc6', '#fff', '#fa4'], smin: 40, smax: 180, lmin: 0.3, lmax: 0.7, add: true });
     const ch = this.chapter, n = chipsIn(this.chips, ch), lore = CHAPTERS[ch].lore;
     this.toast(`记忆芯片 ${n} / ${chipTotal(ch)}`, lore[(n - 1) % lore.length]);
+    Inventory.p.chipLog[c.id] = 1;
+    this.checkChipRewards();
     this.persist();
+  },
+  // ---- 记忆芯片收藏（跨周目累计）：集齐一章 → 成就 + 专属外观；四章全部集齐 → 解锁隐藏结局 ----
+  chipLogIn(ch) { return chipsIn(Object.keys(Inventory.p.chipLog), ch); },
+  checkChipRewards() {
+    const P = Inventory.p, S = typeof window !== 'undefined' && window.LAZARUS_STEAM;
+    let all = true;
+    for (let ch = 1; CHAPTERS[ch]; ch++) {
+      if (this.chipLogIn(ch) < chipTotal(ch)) { all = false; continue; }
+      if (P.chipDone[ch]) continue;
+      P.chipDone[ch] = true;
+      const d = ITEMDEFS.find((x) => x.chipReward === ch);
+      if (d && !Inventory.owns(d.id)) Inventory.addLocalCopy(d.id, '记忆芯片收藏');
+      this.toasts.push({ title: `成就解锁 · ${CH_NUM[ch]}「${CHAPTERS[ch].name}」记忆全集`, text: `集齐本章全部 ${chipTotal(ch)} 枚记忆芯片` + (d ? ` · 获得专属外观「${d.name}」` : ''), t: 0, color: '#fc6' });
+      if (S && S.setAchievement) S.setAchievement('CHIPS_CH' + ch);
+    }
+    if (all && !P.hiddenEnd) {
+      P.hiddenEnd = true;
+      this.toasts.push({ title: '隐藏结局已解锁', text: '全部记忆芯片已归位 · 通关最终章后，或在标题画面「隐藏结局」中观看', t: 0, color: '#f6c' });
+      if (S && S.setAchievement) S.setAchievement('CHIPS_ALL');
+    }
+    Inventory.save();
   },
   killEnemy(e) {
     e.alive = false; Sound.sfx.stomp(); this.shake(4); this.freeze(0.04);
@@ -293,7 +319,7 @@ const Game = {
     const r = RARITY[d.rarity];
     Sound.sfx.drop(d.rarity);
     if (d.rarity === 'legendary') { this.flash(0.5, '#ffd070'); Input.rumble(0.5, 0.6, 350); }
-    this.toasts.push({ title: `掉落 · ${r.name} · ${d.name}`, text: `${SLOTS.find((x) => x.key === d.slot).name} · 来自「${src}」 · 可交易 · 可上架 Steam 市场`, t: 0, color: r.color, drop: true });
+    this.toasts.push({ title: `${d.tradable ? '掉落' : '获得'} · ${r.name} · ${d.name}`, text: `${SLOTS.find((x) => x.key === d.slot).name} · 来自「${src}」 · ${d.tradable ? '可交易 · 可上架 Steam 市场' : '账号绑定'}`, t: 0, color: r.color, drop: true });
   },
   // 武器 / 冲撞 命中处理：返回 'kill' | 'block' | 'cut'
   // kind：blade 挥砍 | heavy 重劈/冲击波 | dash 冲撞 | shot 子弹/弹反 | spore 孢子；src = 攻击来源位置（远程攻击用）
@@ -349,6 +375,7 @@ const Game = {
     if (m.act === 'continue') this.startLevel(m.lv);
     else if (m.act === 'select') { this.state = 'select'; this.selSel = 0; this.selCh = this.titleCh || 1; }
     else if (m.act === 'inv') this.openInventory('title');
+    else if (m.act === 'hidden') { this.playLines(HIDDEN_END, () => this.toTitle()); Sound.music('ending'); }
     else if (m.act === 'keys') this.openKeys('title');
     else if (m.act === 'audio') this.openAudio('title');
     else this.newGame();
@@ -502,7 +529,9 @@ const Game = {
           Save.save({ level: next > 0 ? next : 0, deaths: this.deaths, chips: [...this.chips], time: this.runTime });
         };
         this.bossDoneT = -1;
-        if (CHAPTERS[ch].epilogue) { this.playLines(CHAPTERS[ch].epilogue, toEnd); Sound.music('ending'); } // 最终章：先播结局剧情
+        // 最终章：先播结局剧情；集齐全部记忆芯片时紧接着播隐藏结局
+        const afterEpi = CHAPTERS[ch].end && CHAPTERS[ch].end.final && Inventory.p.hiddenEnd ? () => this.playLines(HIDDEN_END, toEnd) : toEnd;
+        if (CHAPTERS[ch].epilogue) { this.playLines(CHAPTERS[ch].epilogue, afterEpi); Sound.music('ending'); }
         else toEnd();
       }
     }
@@ -950,6 +979,11 @@ const Game = {
     ctx.fillText(`记忆芯片　${chipsIn(this.chips, ch)} / ${chipTotal(ch)}`, VW / 2, 282);
     ctx.fillText(`用时　${mm}分${String(ss).padStart(2, '0')}秒`, VW / 2, 314);
     if (E.reward && Inventory.ability(E.reward[0])) { ctx.fillStyle = '#fc6'; ctx.font = 'bold 15px ' + FONT; ctx.fillText(E.reward[1], VW / 2, 346); }
+    else if (E.final) {
+      let got = 0, tot = 0; for (let c = 1; CHAPTERS[c]; c++) { got += this.chipLogIn(c); tot += chipTotal(c); }
+      ctx.fillStyle = Inventory.p.hiddenEnd ? '#f6c' : '#fc6'; ctx.font = 'bold 15px ' + FONT;
+      ctx.fillText(Inventory.p.hiddenEnd ? '隐藏结局已解锁 · 可在标题画面重温' : `全部记忆芯片 ${got} / ${tot} · 集齐后解锁隐藏结局`, VW / 2, 346);
+    }
     ctx.globalAlpha = Math.min(1, Math.max(0, t - 2));
     ctx.font = '15px ' + FONT; ctx.fillStyle = 'rgba(220,220,210,0.8)';
     ctx.fillText(E.line || '', VW / 2, 380);
