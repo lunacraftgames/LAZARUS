@@ -6,3 +6,5 @@ node_modules/
 *.log
 # 本地推送脚本
 push_to_github.bat
+# 本地测试截图（仓库根目录）
+/*.png
