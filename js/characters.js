@@ -350,15 +350,16 @@ Object.assign(Player.prototype, {
       this.slamming = true; this.jetOn = false; this.jumping = false; this.vx = 0; this.vy = 900;
       Sound.sfx.dash(); Input.rumble(0.1, 0.4, 80); this.sx = 0.8; this.sy = 1.25;
     } else if (this.onGround) {
-      this.stompCd = 0.5; this.sx = 1.25; this.sy = 0.8;
-      g.atlasQuake(this, 46, false);
+      const big = this.mod('dashStrike'); // 模块「液压冲压」：范围更大、冷却更短
+      this.stompCd = big ? 0.3 : 0.5; this.sx = 1.25; this.sy = 0.8;
+      g.atlasQuake(this, big ? 80 : 46, false);
       if (g.matrix) g.matrix.spawnEcho(this, g); // 第三章：踏地留下残影
     }
   },
   // 喷气悬停（在「本地坐标」的普通物理里调用：vy > 0 = 朝脚下）
   updateJet(dt, g, I) {
     this.stompCd -= dt;
-    if (this.onGround || this.inWater) { this.fuel = this.C.fuel; this.jetOn = false; if (this.onGround) this.slamming = false; return; }
+    if (this.onGround || this.inWater) { this.fuel = this.maxFuel(); this.jetOn = false; if (this.onGround) this.slamming = false; return; }
     if (this.slamming) { this.vx = 0; this.vy = Math.max(this.vy, 900); this.jetOn = false; return; }
     const can = I.down('jump') && this.fuel > 0 && this.dashLock <= 0 && this.slimeT <= 0 && this.vy > -160;
     this.jetOn = can;
@@ -459,7 +460,9 @@ Object.assign(Game, {
       if (Math.abs(ex - fx) < r + e.w / 2 && Math.abs(ey - fy) < r * 0.6 + e.h / 2) this.strike(e, 'heavy', { x: fx, y: fy });
     }
     if (big) {
-      if (p.onGround) for (const dir of [-1, 1]) this.pshots.push(new PShot({ type: 'wave', x: fx + dir * 20, y: fy, vx: dir * 460, r: 12, life: 0.45, kind: 'heavy', pierce: true }));
+      const core = p.mod && p.mod('sporeGun'); // 模块「震荡核心」：冲击波距离翻倍，落点留下震荡区
+      if (p.onGround) for (const dir of [-1, 1]) this.pshots.push(new PShot({ type: 'wave', x: fx + dir * 20, y: fy, vx: dir * 460, r: 12, life: core ? 0.9 : 0.45, kind: 'heavy', pierce: true }));
+      if (core) this.pshots.push(new SporeCloud(fx, fy - 14 * (p.gd || 1), { color: '255,210,120', kind: 'heavy', r: 40, life: 1 }));
       // 震塌脚下的坍塌石板（整组立刻开始下落）
       for (const c of this.crumbles) if (c.state === 'idle' && Math.abs(c.x + 16 - fx) < 40 && Math.abs(((p.gd || 1) > 0 ? c.y : c.y + 32) - fy) < 6) { c.onStand(this); for (const o of this.crumbles) if (o.group === c.group && o.state === 'shake') o.t = Math.max(o.t, 0.9); }
     }
@@ -494,7 +497,8 @@ Object.assign(Player.prototype, {
   // 相位闪现：沿方向瞬移，能穿过不超过 1 格厚的瓦片墙，碰到实体机关就停在它前面
   vesperBlink(g, I, ctl) {
     if (this.dashLock > 0) { Sound.sfx.denied(); g.hudDeny = 0.6; Input.rumble(0.3, 0, 120); return; }
-    if (!this.canDash || this.dashCd > 0) return;
+    if ((!this.canDash && !(this.bonusDash > 0)) || this.dashCd > 0) return;
+    const bonus = !this.canDash; // 模块「二次闪现」：空中额外一次
     const W = g.world, gd = this.gd || 1;
     let dx = (I.down('right') ? 1 : 0) - (I.down('left') ? 1 : 0), dy = (I.down('down') ? 1 : 0) - (I.down('up') ? 1 : 0);
     if (this.onGround && dy > 0) dy = 0;
@@ -513,10 +517,19 @@ Object.assign(Player.prototype, {
     }
     this.dashCd = 0.3; this.canDash = false;
     if (!best) { Sound.sfx.denied(); return; }
+    if (bonus) this.bonusDash--;
     const from = { x: this.cx, y: this.cy };
     if (g.matrix) g.matrix.spawnEcho(this, g); // 第三章：残影留在闪现起点
     this.x = best.x; this.y = best.y; this.vx = ux * 220; this.vy = uy * gd < 0 ? -120 : 0; // vy 此时是本地坐标（朝脚下为正）
     this.invulnT = 0.15; this.jumping = false; this.blinkFx = { x: from.x, y: from.y, t: 0 };
+    if (this.mod('dashStrike')) { // 模块「相位斩」：切碎闪现路径上的敌人，切碎至少一个就恢复闪现
+      let cut = 0;
+      for (const e of g.enemies) {
+        if (!e.alive) continue;
+        for (let k = 0; k <= 1; k += 0.125) { const b = { x: lerp(x0, this.x, k), y: lerp(y0, this.y, k), w: this.w, h: this.h }; if (overlap(b, e)) { if (g.strike(e, 'dash') === 'kill') cut++; break; } }
+      }
+      if (cut) { this.canDash = true; this.dashCd = 0.12; g.freeze(0.05); }
+    }
     if (dx) this.facing = Math.sign(dx);
     ctl.dashed = true; ctl.dashDir = { x: ux, y: uy * gd };
     Sound.sfx.echo ? Sound.sfx.echo() : Sound.sfx.dash(); g.shake(2); Input.rumble(0.05, 0.4, 60);
@@ -539,6 +552,7 @@ Object.assign(Player.prototype, {
     if (!pick) pick = this.hist.find((h) => this.spotFree(W, h.x, h.y));
     if (!pick) { Sound.sfx.denied(); return; }
     const from = { x: this.cx, y: this.cy };
+    if (this.mod('sporeGun')) g.rewindBlast(from.x, from.y); // 模块「回溯爆破」
     this.x = pick.x; this.y = pick.y; this.facing = pick.f; this.vx = 0; this.vy = 0; this.dashT = 0; this.jumping = false;
     this.rewindCd = this.C.rewindCd; this.invulnT = 0.25; this.hist = []; this.canDash = true;
     Sound.sfx.rewind ? Sound.sfx.rewind() : Sound.sfx.respawn(); g.flash(0.2, '#ff4d6d'); Input.rumble(0.2, 0.3, 120);
@@ -616,10 +630,14 @@ Object.assign(Player.prototype, {
     if (I.down('up') && !mx) dx = 0;
     const l = Math.hypot(dx, dy), ux = dx / l, uy = dy / l * gd; // 重力反转时「上」指向自己的头顶
     const ox = this.cx, oy = this.cy - gd * 6, R = this.C.hookRange;
-    let hit = null;
+    let hit = null, drag = null;
     for (let d = 8; d <= R; d += 4) {
       const x = ox + ux * d, y = oy + uy * d;
       if (x < 0 || x > W.pw || y < 0 || y > W.ph) break;
+      if (this.mod('dashStrike')) { // 模块「拖拽钩」：钩中普通敌人就把它拽过来撞碎
+        const e = g.enemies.find((o) => o.alive && x > o.x - 4 && x < o.x + o.w + 4 && y > o.y - 4 && y < o.y + o.h + 4);
+        if (e) { drag = { e, x, y }; break; }
+      }
       const tx = Math.floor(x / TILE), ty = Math.floor(y / TILE);
       if (!W.solidAt(tx, ty)) continue;
       hit = { x: ox + ux * (d - 2), y: oy + uy * (d - 2) };
@@ -633,6 +651,14 @@ Object.assign(Player.prototype, {
     }
     this.hookCd = 0.22; ctl.dashed = true; ctl.dashDir = { x: ux, y: uy };
     if (g.matrix) g.matrix.spawnEcho(this, g); // 第三章：残影留在出钩的位置
+    if (drag) {
+      const r = g.strike(drag.e, 'dash');
+      this.hookFx = { x: drag.x, y: drag.y, t: 0, miss: true };
+      if (r === 'kill') { Sound.sfx.hook(); g.freeze(0.05); g.bolts.push({ x1: drag.x, y1: drag.y, x2: ox, y2: oy, t: 0, life: 0.2, w: 2 }); if (!g.dragHinted) { g.dragHinted = true; g.toastHint('拖拽钩：钩中普通敌人会把它拽过来撞碎'); } }
+      else Sound.sfx.hookMiss();
+      if (dx) this.facing = Math.sign(dx);
+      return;
+    }
     const end = hit || { x: ox + ux * R, y: oy + uy * R };
     this.hookFx = { x: end.x, y: end.y, t: 0, miss: !hit };
     if (dx) this.facing = Math.sign(dx);
@@ -667,6 +693,12 @@ Object.assign(Player.prototype, {
       if (h.lip && Math.hypot(this.cx - h.x, this.cy - h.y) < 46 && this.evaMantle(g)) return;
       if (this.jumpBuf > 0) { this.jumpBuf = 0; this.evaRelease(g, true); ctl.jumped = 'hook'; }
       else if (this.onGround && h.t > 0.15) this.evaRelease(g, false);
+      return;
+    }
+    if (this.flap > 0 && !this.onGround && this.coyote <= 0 && I.hit('jump') && this.slimeT <= 0) { // 模块「扑翼」：空中向上扑一下
+      this.flap = 0; this.jumpBuf = 0; this.vy = Math.min(this.vy, -540); this.jumping = false; this.gliding = false; this.sx = 0.8; this.sy = 1.25;
+      Sound.sfx.djump ? Sound.sfx.djump() : Sound.sfx.jump(); ctl.jumped = 'double';
+      g.particles.burst(this.cx, this.y + this.h, 8, { color: ['#ff9a3c', '#f3e3c3'], smin: 40, smax: 120, angle: Math.PI / 2, spread: 0.9, lmin: 0.2, lmax: 0.4, add: true });
       return;
     }
     this.gliding = !this.onGround && I.down('jump') && this.vy > 60 && this.slimeT <= 0;
@@ -750,6 +782,7 @@ Object.assign(Game, {
     else if (e.onStrike || e instanceof Chandelier) return this.strike(e, 'shot', src);
     if (e.guard && e.guard(src || this.player, 'shot')) return this.strike(e, 'shot', src);
     e.stunT = this.player.C.stunT || 2.6;
+    if (this.player.mod('flintlock')) e.burn = true; // 模块「燃烧信号弹」：晕眩结束时烧毁
     Sound.sfx.stun(); this.shake(2);
     this.particles.burst(e.x + e.w / 2, e.y + e.h / 2, 12, { color: ['#ff9a3c', '#ffe0a0', '#fff'], shape: 'spark', smin: 60, smax: 220, lmin: 0.15, lmax: 0.35, add: true });
     if (!this.stunHinted) { this.stunHinted = true; this.toastHint('信号弹只会把敌人打晕——趁它晕着踩它的头'); }
@@ -760,6 +793,7 @@ Object.assign(Game, {
     const cx = e.x + e.w / 2, cy = e.y - 6, k = Math.min(1, e.stunT * 2);
     ctx.save(); ctx.globalAlpha = k; ctx.globalCompositeOperation = 'lighter';
     for (let i = 0; i < 3; i++) { const a = this.t * 6 + i * 2.09; ctx.fillStyle = i % 2 ? '#ffe0a0' : '#ff9a3c'; ctx.fillRect(cx + Math.cos(a) * 10 - 2, cy + Math.sin(a) * 3 - 2, 4, 4); }
+    if (e.burn && Math.random() < 0.5) this.particles.add({ x: e.x + rand(0, e.w), y: e.y + rand(0, e.h), vx: rand(-15, 15), vy: rand(-90, -40), life: rand(0.25, 0.45), size: rand(2, 4), color: Math.random() < 0.5 ? '#ff7a2a' : '#ffd070', add: true });
     ctx.restore();
   },
 });

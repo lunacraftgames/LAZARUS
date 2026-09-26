@@ -21,6 +21,18 @@ class PShot {
   update(dt, g) {
     this.t += dt; if (this.t > this.life) { this.expire(g); return; }
     const W = g.world;
+    if (this.type === 'boom') { // 小扫的回旋刷头：飞出约 5 格（或撞墙）后飞回主人身边
+      const o = this.owner;
+      if (!this.back && (this.t > 0.26 || W.pointSolid(this.x + Math.sign(this.vx) * 6, this.y))) { this.back = true; this.hit = new Set(); }
+      if (this.back) {
+        const dx = o.cx - this.x, dy = o.cy - this.y, d = Math.hypot(dx, dy) || 1;
+        this.vx = dx / d * 680; this.vy = dy / d * 680;
+        if (d < 18 || o.dead) { this.dead = true; return; }
+      }
+      this.x += this.vx * dt; this.y += this.vy * dt; this.spin = (this.spin || 0) + dt * 30;
+      if (Math.random() < 0.5) g.particles.add({ x: this.x, y: this.y, vx: rand(-20, 20), vy: rand(-20, 20), life: 0.2, size: 1.5, color: '#fc4', add: true });
+      return;
+    }
     if (this.type === 'wave') {
       // 冲击波：贴着地面走，撞墙或脚下没地面就消失
       this.x += this.vx * dt;
@@ -37,21 +49,31 @@ class PShot {
     }
     if (this.type === 'bullet' && Math.random() < 0.5) g.particles.add({ x: this.x, y: this.y, vx: 0, vy: 0, life: 0.18, size: 1.5, color: '#fff3c0', add: true });
     if (this.type === 'flare' && Math.random() < 0.7) g.particles.add({ x: this.x + rand(-2, 2), y: this.y + rand(-2, 2), vx: rand(-15, 15), vy: rand(-15, 15), life: 0.3, size: rand(1.5, 3), color: Math.random() < 0.5 ? '#ff9a3c' : '#ffe0a0', add: true });
-    if (this.type === 'spore' && Math.random() < 0.4) g.particles.add({ x: this.x, y: this.y, vx: rand(-20, 20), vy: rand(-20, 20), life: 0.35, size: 2, color: '#9fe8c0', add: true });
+    if (this.type === 'spore' && Math.random() < 0.4) g.particles.add({ x: this.x, y: this.y, vx: rand(-20, 20), vy: rand(-20, 20), life: 0.35, size: 2, color: this.foam ? '#e8f4ff' : '#9fe8c0', add: true });
+    if (this.type === 'rocket' && Math.random() < 0.9) g.particles.add({ x: this.x - Math.sign(this.vx) * 10, y: this.y + rand(-3, 3), vx: -this.vx * 0.15, vy: rand(-20, 20), life: 0.25, size: rand(2, 4), color: Math.random() < 0.5 ? '#ffb040' : '#fff0a0', add: true });
+    if (this.type === 'dblade' && Math.random() < 0.8) g.particles.add({ x: this.x + rand(-6, 6), y: this.y + rand(-8, 8), vx: 0, vy: 0, life: 0.2, size: 2, color: Math.random() < 0.5 ? '#ff4d6d' : '#ffd0da', add: true });
+    if (this.type === 'flarebomb' && Math.random() < 0.8) g.particles.add({ x: this.x, y: this.y, vx: rand(-20, 20), vy: rand(-20, 20), life: 0.3, size: rand(1.5, 3), color: Math.random() < 0.5 ? '#fff' : '#ffe0a0', add: true });
+  }
+  // 落地 / 命中后留下的云：孢子、泡沫（小扫）、彩烟（信使）
+  leaveCloud(g) {
+    if (this.type === 'spore') g.pshots.push(new SporeCloud(this.x, this.y, this.foam ? { color: '220,240,255', kind: 'spore' } : null));
+    else if (this.type === 'flare' && this.smoke) g.pshots.push(new SporeCloud(this.x, this.y, { color: '255,170,90', kind: 'flare', r: 30 }));
   }
   burst(g, n) { g.particles.burst(this.x, this.y, n, { color: this.colors || ['#ffd070', '#fff'], shape: 'spark', smin: 60, smax: 220, lmin: 0.1, lmax: 0.3, add: true }); }
   impact(g) {
     this.dead = true;
-    if (this.type === 'spore') { g.pshots.push(new SporeCloud(this.x, this.y)); Sound.sfx.sporeBurst(); return; }
+    if (this.type === 'flarebomb') { g.flareBurst(this.x, this.y); return; }
+    this.leaveCloud(g);
+    if (this.type === 'spore') { Sound.sfx.sporeBurst(); return; }
     this.burst(g, 6);
   }
-  expire(g) { this.dead = true; if (this.type === 'spore') g.pshots.push(new SporeCloud(this.x, this.y)); }
+  expire(g) { this.dead = true; if (this.type === 'flarebomb') g.flareBurst(this.x, this.y); else this.leaveCloud(g); }
   // 命中敌人后：子弹 / 孢子 / 反弹物消失，冲击波继续前进
   onHit(g, res) {
     if (this.pierce && res !== 'block' && res !== 'bounced') return;
     this.dead = true;
     if (res === 'block' || res === 'bounced') { Sound.sfx.ricochet(); this.burst(g, 8); }
-    if (this.type === 'spore') g.pshots.push(new SporeCloud(this.x, this.y));
+    if (this.type === 'flarebomb') g.flareBurst(this.x, this.y); else this.leaveCloud(g);
   }
   draw(ctx) {
     ctx.globalCompositeOperation = 'lighter';
@@ -69,6 +91,24 @@ class PShot {
     } else if (this.type === 'reflect') {
       const gr = ctx.createRadialGradient(this.x, this.y, 1, this.x, this.y, 16); gr.addColorStop(0, 'rgba(255,255,255,0.95)'); gr.addColorStop(0.4, this.glow || 'rgba(120,220,255,0.7)'); gr.addColorStop(1, 'rgba(120,220,255,0)');
       ctx.fillStyle = gr; ctx.fillRect(this.x - 16, this.y - 16, 32, 32);
+    } else if (this.type === 'boom') { // 回旋的刷头
+      ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(this.spin || 0);
+      ctx.fillStyle = '#d8d0b0'; for (let i = 0; i < 8; i++) { ctx.rotate(Math.PI / 4); ctx.fillRect(4, -1, 5, 2); }
+      ctx.fillStyle = '#fc4'; ctx.beginPath(); ctx.arc(0, 0, 4, 0, 7); ctx.fill();
+      ctx.restore();
+    } else if (this.type === 'rocket') { // 火箭拳
+      const d = Math.sign(this.vx) || 1;
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = '#5b5a55'; ctx.fillRect(this.x - d * 10 - 4, this.y - 4, 10, 8);
+      ctx.fillStyle = '#f7c948'; ctx.fillRect(this.x - 5, this.y - 7, 11, 14); ctx.fillStyle = '#e0a525'; ctx.fillRect(this.x + d * 3 - 2, this.y - 7, 4, 14);
+      ctx.globalCompositeOperation = 'lighter';
+    } else if (this.type === 'dblade') { // 数据飞刃
+      const d = Math.sign(this.vx) || 1;
+      ctx.strokeStyle = 'rgba(255,77,109,0.9)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(this.x - d * 6, this.y, 12, -1.1, 1.1); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,220,230,0.9)'; ctx.lineWidth = 1; ctx.stroke();
+    } else if (this.type === 'flarebomb') { // 照明弹
+      const gr = ctx.createRadialGradient(this.x, this.y, 1, this.x, this.y, 14); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.4, 'rgba(255,224,160,0.8)'); gr.addColorStop(1, 'rgba(255,154,60,0)');
+      ctx.fillStyle = gr; ctx.fillRect(this.x - 14, this.y - 14, 28, 28);
     } else if (this.type === 'wave') {
       const a = 1 - this.t / this.life, d = Math.sign(this.vx);
       ctx.fillStyle = `rgba(255,210,120,${0.7 * a})`;
@@ -79,18 +119,20 @@ class PShot {
   }
 }
 // 孢子云：停留约 1.5 秒，碰到的敌人会被腐蚀（无视盾牌）
+//  o：{ color: 'r,g,b', kind, r, life }——小扫的泡沫、阿特拉斯的震荡区、信使的彩烟共用
 class SporeCloud {
-  constructor(x, y) { this.x = x; this.y = y; this.r = 26; this.t = 0; this.life = 1.5; this.dead = false; this.type = 'cloud'; this.pierce = true; this.hit = new Set(); }
+  constructor(x, y, o) { this.x = x; this.y = y; this.r = 26; this.t = 0; this.life = 1.5; this.dead = false; this.type = 'cloud'; this.pierce = true; this.hit = new Set(); this.kind = 'spore'; this.color = null; Object.assign(this, o || {}); }
   get box() { return { x: this.x - this.r, y: this.y - this.r, w: this.r * 2, h: this.r * 2 }; }
   update(dt, g) {
     this.t += dt; if (this.t > this.life) this.dead = true;
-    if (Math.random() < 0.5) g.particles.add({ x: this.x + rand(-this.r, this.r), y: this.y + rand(-this.r * 0.6, this.r * 0.4), vx: rand(-10, 10), vy: rand(-30, -8), life: 0.7, size: rand(3, 6), grow: 6, color: 'rgba(140,230,170,0.35)', shape: 'glow' });
+    if (Math.random() < 0.5) g.particles.add({ x: this.x + rand(-this.r, this.r), y: this.y + rand(-this.r * 0.6, this.r * 0.4), vx: rand(-10, 10), vy: rand(-30, -8), life: 0.7, size: rand(3, 6), grow: 6, color: this.color ? `rgba(${this.color},0.35)` : 'rgba(140,230,170,0.35)', shape: 'glow' });
   }
   onHit() {}
   draw(ctx) {
     const a = Math.min(1, (this.life - this.t) * 2) * 0.45;
     const gr = ctx.createRadialGradient(this.x, this.y, 2, this.x, this.y, this.r + 6);
-    gr.addColorStop(0, `rgba(170,255,190,${a})`); gr.addColorStop(0.6, `rgba(90,200,140,${a * 0.6})`); gr.addColorStop(1, 'rgba(60,160,110,0)');
+    if (this.color) { gr.addColorStop(0, `rgba(${this.color},${a})`); gr.addColorStop(0.6, `rgba(${this.color},${a * 0.5})`); gr.addColorStop(1, `rgba(${this.color},0)`); }
+    else { gr.addColorStop(0, `rgba(170,255,190,${a})`); gr.addColorStop(0.6, `rgba(90,200,140,${a * 0.6})`); gr.addColorStop(1, 'rgba(60,160,110,0)'); }
     ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(this.x, this.y, this.r + 6, 0, 7); ctx.fill();
   }
 }
@@ -124,7 +166,7 @@ Object.assign(Game, {
       setTimeout(() => { if (Inventory.weapon() === 'flintlock') Sound.sfx.reload(); }, 820);
     } else if (k === 'flare') {
       // 信使的信号枪：一颗橙色信号弹，不致死，只会把敌人打晕
-      this.pshots.push(new PShot({ type: 'flare', x: mx, y: my, vx: base.x * 760, vy: base.y * 760, r: 5, life: 0.7, kind: 'flare', colors: ['#ff9a3c', '#ffe0a0', '#fff'] }));
+      this.pshots.push(new PShot({ type: 'flare', x: mx, y: my, vx: base.x * 760, vy: base.y * 760, r: 5, life: 0.7, kind: 'flare', colors: ['#ff9a3c', '#ffe0a0', '#fff'], smoke: p.mod && p.mod('sporeGun') }));
       Sound.sfx.flare(); Input.rumble(0.05, 0.2, 50);
       this.particles.burst(mx, my, 6, { color: ['#ff9a3c', '#ffe0a0'], shape: 'spark', smin: 40, smax: 160, lmin: 0.1, lmax: 0.25, add: true });
     } else if (k === 'sporeGun') {

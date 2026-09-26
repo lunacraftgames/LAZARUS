@@ -487,7 +487,7 @@ makeEnemy = function (s, world) { // eslint-disable-line no-func-assign
 };
 // 地图字符 → 场景物件
 PROP_FACTORIES.g = (x, y) => new SlimePuddle(x * TILE + 16, (y + 1) * TILE, 0);
-PROP_FACTORIES.D = (x, y) => (Inventory.ability('doubleJump') ? null : new AbilityPickup(x * TILE + 16, (y + 1) * TILE, 'doubleJump'));
+PROP_FACTORIES.D = (x, y) => (pickupWanted('doubleJump') ? new AbilityPickup(x * TILE + 16, (y + 1) * TILE, 'doubleJump') : null); // 其他角色：专属模块
 PICKUP_INFO.doubleJump = { label: '推进囊', color: '120,240,255' };
 
 // ============================================================
