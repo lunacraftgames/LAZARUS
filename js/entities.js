@@ -96,7 +96,12 @@ class Checkpoint {
     ctx.fillStyle = '#12181a'; ctx.fillRect(x + 5, y + 11, 18, 13);
     if (this.active) {
       ctx.fillStyle = '#5f8'; ctx.fillRect(x + 7, y + 13, 14 * Math.min(1, this.t * 2), 2);
-      ctx.fillStyle = 'rgba(80,255,140,0.7)'; ctx.font = '7px ' + MONO; ctx.fillText('SAVED', x + 6, y + 22);
+      // 「SAVED」：按屏幕宽度（18px，两侧各留 1px）缩放后居中，并裁剪在屏幕里，不会出界
+      ctx.save(); ctx.beginPath(); ctx.rect(x + 5, y + 11, 18, 13); ctx.clip();
+      ctx.fillStyle = 'rgba(80,255,140,0.8)'; ctx.font = 'bold 7px ' + MONO; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const sc = Math.min(1, 16 / ctx.measureText('SAVED').width);
+      ctx.translate(x + 14, y + 19.5); ctx.scale(sc, sc); ctx.fillText('SAVED', 0, 0);
+      ctx.restore();
       ctx.globalCompositeOperation = 'lighter';
       const gr = ctx.createRadialGradient(x + 14, y + 17, 2, x + 14, y + 17, 34);
       gr.addColorStop(0, 'rgba(80,255,140,0.35)'); gr.addColorStop(1, 'rgba(80,255,140,0)');
