@@ -45,11 +45,12 @@ const CHARACTERS = {
     pl: { RUN: 205, ACC_G: 1500, DEC_G: 1700, ACC_A: 1100, DEC_A: 600, JUMP: 650, H: 30 },
     music: 'steel', // 背景音乐的演奏风格（见 audio.js 的 STYLES）
     weapon: 'fist', draw: 'drawAtlas', noDoubleJump: true, noCrouch: true, jet: true, shield: true,
-    fuel: 1.15,      // 喷气燃料（秒），落地回满
+    fuel: 1.15,      // 喷气燃料（秒）
+    fuelRefill: 2.3, // 落地后以固定速度回复燃料（每秒回复的秒数）：1.15 秒的燃料约 0.5 秒回满
     echoLife: 4,     // 第三章：踏地留下的残影更久（它跑得慢，也不能冲刺）
     bio: '机械展区里的另一件展品：一台用来搬运钢梁的重型工程外骨骼，电池早在清洗战争前就被拆掉了。拉撒路的无线电信号让它的液压系统重新加压——它比拉撒路重三倍，也固执三倍。',
     skills: [
-      ['喷气悬停', '空中按住跳跃：喷气背包托着你悬停、缓慢上升；燃料落地回满'],
+      ['喷气悬停', '空中按住跳跃：喷气背包托着你悬停、缓慢上升；落地后燃料约 0.5 秒回满'],
       ['地面猛击', '空中按冲刺：垂直砸下去，落地的冲击波向两侧推开，还会震塌坍塌石板'],
       ['液压踏地', '地面按冲刺：原地震一下，打碎身边的敌人（第三章会留下 4 秒的残影）'],
       ['液压拳 / 臂盾', '专属近战：慢但范围大，能打碎看守者的盾牌；站在地上时，正面飞来的子弹和炸弹会被挡下'],
@@ -359,7 +360,8 @@ Object.assign(Player.prototype, {
   // 喷气悬停（在「本地坐标」的普通物理里调用：vy > 0 = 朝脚下）
   updateJet(dt, g, I) {
     this.stompCd -= dt;
-    if (this.onGround || this.inWater) { this.fuel = this.maxFuel(); this.jetOn = false; if (this.onGround) this.slamming = false; return; }
+    // 落地后燃料以固定速度回满（不是瞬间回满）
+    if (this.onGround || this.inWater) { this.fuel = Math.min(this.maxFuel(), this.fuel + (this.C.fuelRefill || 2.3) * dt); this.jetOn = false; if (this.onGround) this.slamming = false; return; }
     if (this.slamming) { this.vx = 0; this.vy = Math.max(this.vy, 900); this.jetOn = false; return; }
     const can = I.down('jump') && this.fuel > 0 && this.dashLock <= 0 && this.slimeT <= 0 && this.vy > -160;
     this.jetOn = can;

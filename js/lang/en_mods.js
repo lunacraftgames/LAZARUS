@@ -19,7 +19,7 @@ Object.assign(I18N.EN, {
   '【1-6 古兵器馆】出拳后马上再按一次攻击，可以紧接着打出第二拳；两拳之后才进入正常冷却。': '[1-6 Armoury] Press attack again right after a punch to throw a second one immediately; the normal cooldown only starts after the second.',
   '【1-8 坍塌天井】按住攻击约 0.3 秒再松开：发射拳头，直线飞出约 8 格。能打落吊灯、击落无人机，也能破盾。': '[1-8 Collapsed Atrium] Hold attack for about 0.3 s, then release: launch your fist about 8 tiles straight ahead. Brings down chandeliers and drones, and breaks shields.',
   '【击败巨像1号】按住攻击约 0.6 秒再松开：重拳；站在地上时会砸出一次震地，向两侧放出冲击波，还能震塌坍塌石板。': '[Defeat Colossus-1] Hold attack for about 0.6 s, then release: a heavy punch; on the ground it quakes the floor, sends shockwaves both ways and collapses crumbling slabs.',
-  '【2-1 孵化场入口】喷气燃料 1.15 → 1.8 秒：悬停更久、爬得更高。': '[2-1 Hatchery Gate] Jet fuel 1.15 → 1.8 s: hover longer and climb higher.',
+  '【2-1 孵化场入口】喷气燃料 1.15 → 1.8 秒：悬停更久、爬得更高（落地回满约需 0.8 秒）。': '[2-1 Hatchery Gate] Jet fuel 1.15 → 1.8 s: hover longer and climb higher (refilling after landing takes about 0.8 s).',
   '【2-5 粘液走廊】地面猛击放出的冲击波距离翻倍，落点还会留下约 1 秒的震荡区，碰到的敌人都会被震碎（无视盾牌）。': '[2-5 Slime Corridor] Ground Slam shockwaves travel twice as far, and the impact point leaves a quake zone for about 1 s that shatters any enemy inside (ignores shields).',
   // 赤影
   '相位斩': 'Phase Cut', '残像回响': 'Afterimage Echo', '数据飞刃': 'Data Shard', '格式化': 'Format', '二次闪现': 'Double Blink', '回溯爆破': 'Rewind Burst',
