@@ -7,7 +7,7 @@ Object.assign(I18N.EN, {
   '攻城机器人的冲撞驱动器……比你整个身体还大，装不上。协议会把它存档，留给用得上它的机体。': 'A siege robot\'s ram drive… bigger than your whole body. It won\'t fit. The protocol will archive it for a chassis that can use it.',
   '[存档] 冲撞模块已为拉撒路解锁 · 小扫的 {dash} 弹射本来就能撞碎普通敌人': '[ARCHIVED] Ram Module unlocked for Lazarus · Scrubber\'s {dash} launch already smashes ordinary enemies',
   '前面那几只蜘蛛……是你以前的同类。弹射过去试试。': 'Those spiders ahead… they\'re your old kind. Try launching into them.',
-  '一把仪仗军刀。它比你还老，也比你大得多——你拿不动，但碰一下它，协议会把它存档。': 'A ceremonial sabre. It\'s older than you, and much bigger — you can\'t lift it, but touch it and the protocol will archive it.',
+  '一把仪仗军刀。它比你大得多，你拿不动——不过展柜底座上有一枚扩展芯片，正好能插进你的刷头。碰一下它。': 'A ceremonial sabre. It\'s far bigger than you, you can\'t lift it — but there\'s an expansion chip in the case\'s base that fits your brush head. Touch it.',
   '收好了。你的刷子已经够用了——它转得比任何刀都快。': 'Filed away. Your brush is all you need — it spins faster than any blade.',
   '[存档] 仪仗军刀已为拉撒路解锁 · 小扫：{attack} 旋转刷 · 空中按住 ↓ 再攻击 = 下刷弹跳': '[ARCHIVED] Ceremonial Sabre unlocked for Lazarus · Scrubber: {attack} Spin Brush · Hold ↓ in mid-air and attack = pogo brush',
   '小心那两个展柜。用刷子先下手为强。': 'Careful with those two cases. Strike first with your brush.',

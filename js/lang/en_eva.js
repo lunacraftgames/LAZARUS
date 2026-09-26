@@ -22,7 +22,7 @@ Object.assign(I18N.EN, {
   '攻城机器人的冲撞驱动器……比你整台机器都重。协议把它存档了，留给拉撒路。': 'The siege robot\'s ram drive… heavier than your whole frame. The Protocol archived it for Lazarus.',
   '[存档] 冲撞模块已为拉撒路解锁 · 信使：{attack} 信号枪把敌人打晕，再踩头收尾': '[ARCHIVED] Ram Module unlocked for Lazarus · Messenger: {attack} flare gun stuns enemies — then stomp to finish',
   '前面那几只蜘蛛，先打晕，再踩。': 'Those spiders ahead — stun first, then stomp.',
-  '一把仪仗军刀。避难所的人说过：你是信使，不是士兵。协议会替拉撒路把它存档。': 'A ceremonial sabre. The people in the shelter told you: you\'re a messenger, not a soldier. The Protocol will archive it for Lazarus.',
+  '一把仪仗军刀。避难所的人说过：你是信使，不是士兵。不过展柜底座上有一枚扩展芯片——你的信号枪用得上。': 'A ceremonial sabre. The people at the shelter said it: you\'re a messenger, not a soldier. But there\'s an expansion chip in the case\'s base — your flare gun can use it.',
   '你还是只能靠踩。不过有信号枪帮忙，它们会乖乖站着让你踩。': 'You still have to stomp. But with the flare gun, they\'ll stand nice and still for you.',
   '[存档] 仪仗军刀已为拉撒路解锁 · 信使：{attack} 信号枪（按住 ↑ 朝上 / 空中按住 ↓ 朝下），打晕后踩头': '[ARCHIVED] Ceremonial sabre unlocked for Lazarus · Messenger: {attack} flare gun (hold ↑ to aim up / hold ↓ in mid-air to aim down), then stomp the stunned',
   '小心那两个展柜。先开一枪把它们打晕。': 'Watch those two display cases. Fire a flare to stun them first.',

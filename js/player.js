@@ -55,6 +55,7 @@ class Player {
       fuel: this.C.fuel || 0, jetOn: false, slamming: false, stompCd: 0, // 阿特拉斯：喷气燃料、地面猛击
       invulnT: 0, hist: null, rewindCd: 0, blinkFx: null,               // 赤影：闪现无敌、回溯记录
       hook: null, hookCd: 0, hookFx: null, gliding: false,             // 信使：抓钩、滑翔
+      bonusDash: 0, combo: 0, comboT: 0, atkSpin: false, flap: 0, echoQ: null, // 可选角色的专属武器模块（modules.js）
     });
   }
   hurt() { const t = this.crouch ? 3 : 6; return { x: this.x + 4, y: this.y + t, w: this.w - 8, h: this.h - t - 2 }; }
@@ -70,8 +71,9 @@ class Player {
   }
   attackBox() {
     if (this.atkT <= 0) return null;
-    const W = this.atkHeavy ? HEAVY : WPN[Inventory.weapon()];
+    const W = this.atkHeavy ? HEAVY : this.wpnSpec(Inventory.weapon());
     if (!W || !W.reach) return null;
+    if (this.atkSpin) return { x: this.x - W.reach + 4, y: this.cy - this.h / 2 - 12, w: this.w + (W.reach - 4) * 2, h: this.h + 24 }; // 小扫的旋转扫：前后都打
     const R = W.reach;
     // 以站立时的头顶为基准；下蹲时横向攻击的高度降低一半
     const PH = this.K.H, top = this.y + this.h - PH, low = this.crouch ? PL.CROUCH_ATK : 0;
@@ -116,6 +118,7 @@ class Player {
     if (this.lockImmune > 0) this.lockImmune -= dt;
     if (this.lagT > 0) this.lagT -= dt;
     const I = this.control(g);
+    if (this.modTick) this.modTick(dt, g); // 专属武器模块：连击计时、残像、空中额外次数
     this.prevBottom = this.y + this.h;
     if (this.spawnT > 0) this.spawnT -= dt;
     if (this.dashLock > 0) this.dashLock -= dt;
@@ -156,7 +159,8 @@ class Player {
     else if (this.C.grapple && I.hit('dash')) this.evaFire(g, I, ctl);   // 信使：抓钩
     else if (I.hit('dash')) {
       if (this.dashLock > 0) { Sound.sfx.denied(); g.hudDeny = 0.6; Input.rumble(0.3, 0, 120); }
-      else if (this.canDash && this.dashCd <= 0) {
+      else if ((this.canDash || this.bonusDash > 0) && this.dashCd <= 0) {
+        if (!this.canDash) this.bonusDash--; // 模块：空中额外一次
         let dx = mx, dy = (I.down('down') ? 1 : 0) - (I.down('up') ? 1 : 0); // 同时按住「向上」+ 冲刺 = 向上冲刺
         if (this.onGround && dy > 0) dy = 0;
         if (!dx && !dy) dx = this.facing;
@@ -176,7 +180,7 @@ class Player {
     this.atkCd -= dt; if (this.atkT > 0) this.atkT -= dt; else this.atkHeavy = false;
     if (this.C.rewind) { this.vesperTrack(dt, g); if (I.hit('swap')) this.vesperRewind(g); } // 赤影：换武器键 = 回溯
     else if (I.hit('swap')) g.swapWeapon();
-    const wk = Inventory.weapon(), WP = WPN[wk];
+    const wk = Inventory.weapon(), WP = this.wpnSpec(wk), MC = this.modCharge ? this.modCharge() : null; // MC：可选角色的模块蓄力
     if (I.hit('attack')) this.atkBuf = 0.12; else this.atkBuf = (this.atkBuf || 0) - dt; // 攻击输入缓冲：冷却快结束时按下也会出手
     if (this.atkBuf > 0 && WP && this.atkCd <= 0 && !g.noAttack) {
       this.atkBuf = 0;
@@ -185,12 +189,24 @@ class Player {
         this.atkT = WP.active; this.atkCd = WP.cd; this.atkCdMax = WP.cd; this.atkHits = new Set(); this.atkSwing = WP.swing; this.atkSwingMax = WP.swing; this.atkHeavy = false;
         Sound.sfx.slash(); Input.rumble(0, 0.2, 50);
         if (WP.charge) this.chargeT = 0; // 巨像残刃：出刀后继续按住 = 蓄力
+        if (this.onSwing) this.onSwing(g);
       } else {
         const dir = I.down('up') ? 'up' : (!this.onGround || this.inWater) && I.down('down') ? 'down' : 'side';
         this.atkCd = WP.cd; this.atkCdMax = WP.cd;
         g.fireWeapon(this, wk, dir);
       }
+      if (MC) this.chargeT = 0; // 模块：出手后继续按住 = 蓄力（约 0.3 秒 = 远程，约 0.6 秒 = 重击）
     }
+    if (MC && this.chargeT >= 0) {
+      if (I.down('attack')) {
+        const before = this.chargeT; this.chargeT += dt;
+        for (const th of [MC.t1, MC.t2]) if (th && before < th && this.chargeT >= th) { Sound.sfx.recharge(); Input.rumble(0.1, 0.3, 80); }
+      } else {
+        if (MC.t2 && this.chargeT >= MC.t2) g.modHeavy(this);
+        else if (MC.t1 && this.chargeT >= MC.t1) g.modRanged(this);
+        this.chargeT = -1;
+      }
+    } else
     // 巨像残刃蓄力：按住约 0.6 秒后松开 → 重劈（地面上还会放出冲击波）
     if (WP && WP.charge && this.chargeT >= 0) {
       if (I.down('attack')) {
@@ -204,7 +220,7 @@ class Player {
         }
         this.chargeT = -1;
       }
-    } else if (!WP || !WP.charge) this.chargeT = -1;
+    } else if (!MC && (!WP || !WP.charge)) this.chargeT = -1;
     this.atkSwing = Math.max(0, this.atkSwing - dt);
     if (this.cling && this.dashT <= 0) { this.vy = 0; return this.updateCling(dt, g, I, ctl); } // 小扫：吸附在墙上 / 倒挂
 
@@ -342,9 +358,10 @@ class Player {
     this.drawBody(ctx, this.x, this.y, this.facing, this.sx, this.sy, g);
     if (this.atkSwing > 0) { if (this.C.weapon === 'brush') this.drawBrushSwing(ctx, g); else if (this.C.weapon === 'fist') this.drawFistSwing(ctx, g); else if (this.C.weapon === 'datablade') this.drawDataSwing(ctx, g); else this.drawSlash(ctx, g); }
     // 蓄力光：满了以后变成金色并闪烁
-    const Wc = WPN[Inventory.weapon()];
-    if (Wc && Wc.charge && this.chargeT > 0.12) {
-      const k = Math.min(1, this.chargeT / Wc.charge), full = k >= 1;
+    if (this.drawMods) this.drawMods(ctx, g);
+    const Wc = WPN[Inventory.weapon()], MCd = this.modCharge ? this.modCharge() : null, full0 = MCd ? MCd.t2 || MCd.t1 : Wc && Wc.charge;
+    if (full0 && this.chargeT > 0.12) {
+      const k = Math.min(1, this.chargeT / full0), full = k >= 1;
       ctx.globalCompositeOperation = 'lighter';
       ctx.strokeStyle = full ? `rgba(255,220,120,${0.6 + 0.4 * Math.sin(g.t * 30)})` : `rgba(255,200,120,${0.25 + k * 0.4})`;
       ctx.lineWidth = full ? 3 : 2;

@@ -22,7 +22,7 @@ Object.assign(I18N.EN, {
   '攻城机器人的冲撞驱动器……你本来就是照着这个标准造的。协议把它存档了，留给拉撒路。': 'A siege robot\'s ram drive… you were built to that very spec. The protocol archived it for Lazarus.',
   '[存档] 冲撞模块已为拉撒路解锁 · 阿特拉斯：空中 {dash} 地面猛击，落地的冲击波会震碎周围的敌人': '[ARCHIVED] Ram Module unlocked for Lazarus · Atlas: {dash} in mid-air to ground slam — the shockwave smashes nearby enemies',
   '前面那几只蜘蛛，跳起来砸下去试试。': 'Those spiders ahead — jump and slam down on them.',
-  '一把仪仗军刀。碰一下它——不是给你用的，协议会替拉撒路保管。': 'A ceremonial sabre. Touch it — not for you; the protocol will keep it for Lazarus.',
+  '一把仪仗军刀。在你手里它就是根牙签——不过展柜底座上有一枚液压扩展芯片。碰一下它，给你的拳头升个级。': 'A ceremonial sabre. In your hands it would be a toothpick — but there\'s a hydraulic expansion chip in the case\'s base. Touch it and upgrade your fists.',
   '在你手里它就像根牙签。你的拳头更管用。': 'In your hands it\'s a toothpick. Your fists work better.',
   '[存档] 仪仗军刀已为拉撒路解锁 · 阿特拉斯：{attack} 液压拳 · 能打碎看守者的盾牌': '[ARCHIVED] Ceremonial Sabre unlocked for Lazarus · Atlas: {attack} Hydraulic Fist · Breaks Warden shields',
   '小心那两个展柜。一拳过去，先下手为强。': 'Careful with those two cases. One punch — strike first.',
