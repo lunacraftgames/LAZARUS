@@ -8,3 +8,5 @@ node_modules/
 push_to_github.bat
 # 本地测试截图（仓库根目录）
 /*.png
+# 桌面版打包输出
+desktop/dist/

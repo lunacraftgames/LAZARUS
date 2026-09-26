@@ -15,13 +15,13 @@ const I18N = {
   missing: new Set(),
   init() {
     let l = null;
-    try { l = localStorage.getItem('lazarus_lang'); } catch (e) { /* */ }
+    l = Store.get('lazarus_lang');
     this.lang = l === 'zh' ? 'zh' : 'en'; // 默认英文
     if (typeof document !== 'undefined') document.documentElement.lang = this.lang === 'zh' ? 'zh-CN' : 'en';
   },
   set(l) {
     this.lang = l === 'zh' ? 'zh' : 'en';
-    try { localStorage.setItem('lazarus_lang', this.lang); } catch (e) { /* */ }
+    Store.set('lazarus_lang', this.lang);
     if (typeof document !== 'undefined') document.documentElement.lang = this.lang === 'zh' ? 'zh-CN' : 'en';
     this.applyDom();
   },

@@ -3,7 +3,7 @@
 //  调试面板（仅供开发测试，发布前删除）
 //  删除方法：删掉本文件，以及 index.html 里加载 js/debug.js 的那一行 <script>。其他文件不依赖它。
 //
-//  F9：打开 / 关闭面板（屏幕上没有按钮）
+//  F9：打开 / 关闭面板（屏幕上没有按钮）；桌面正式版里 DEBUG 为 false，按 F9 没有反应
 //  可以选择任意角色、任意关卡、任意难度直接开始（无视解锁条件）
 //  「补齐武器 / 模块」：拉撒路补上这一关之前能拿到的武器和能力（其他角色的专属模块本来就会自动补上）；会写进存档
 // ============================================================
@@ -87,7 +87,7 @@
   for (const t of ['keydown', 'keyup']) P.addEventListener(t, (e) => { if (e.code !== 'F9') e.stopPropagation(); });
   P.addEventListener('pointerdown', (e) => e.stopPropagation());
   addEventListener('keydown', (e) => {
-    if (e.code === 'F9') { e.preventDefault(); if (!e.repeat) toggle(); }
+    if (e.code === 'F9' && DEBUG) { e.preventDefault(); if (!e.repeat) toggle(); }
     else if (e.code === 'Escape' && P.style.display === 'block') { e.preventDefault(); e.stopImmediatePropagation(); close(); }
   }, true);
 })();

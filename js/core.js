@@ -3,7 +3,19 @@
 //  LAZARUS · 核心工具 / 物理世界 / 粒子
 // ============================================================
 const TILE = 32, VW = 960, VH = 540;
-const BUILD = '20260926-32'; // 版本号，显示在标题界面右下角；与 index.html 里脚本的 ?v= 保持一致
+const BUILD = '20260926-33'; // 版本号，显示在标题界面右下角；与 index.html 里脚本的 ?v= 保持一致
+// 桌面版（Electron，见 desktop/）由 preload 注入 window.LAZARUS_DESKTOP；网页版没有
+const DESKTOP = (typeof window !== 'undefined' && window.LAZARUS_DESKTOP) || null;
+// 测试功能（标题画面数字键直接跳关）：网页版保留；桌面版关闭，只有未打包时 npm run debug 才打开
+const DEBUG = !DESKTOP || !!DESKTOP.debug;
+// 本地存储：网页版用 localStorage；桌面版写到用户目录下的文件（存档可以走 Steam 云同步）。值都是字符串
+const Store = {
+  get(k) { if (DESKTOP) return DESKTOP.store.get(k); try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { if (DESKTOP) return DESKTOP.store.set(k, String(v)); try { localStorage.setItem(k, String(v)); } catch (e) { /* ignore */ } },
+  remove(k) { if (DESKTOP) return DESKTOP.store.remove(k); try { localStorage.removeItem(k); } catch (e) { /* ignore */ } },
+  getJSON(k) { try { return JSON.parse(this.get(k) || 'null'); } catch (e) { return null; } },
+  setJSON(k, v) { this.set(k, JSON.stringify(v)); },
+};
 const GRAV = 2100, MAXFALL = 820;
 const FONT = '"Microsoft YaHei","PingFang SC","Hiragino Sans GB","Noto Sans SC","Source Han Sans SC",sans-serif';
 const MONO = 'Consolas,"Courier New",monospace';
@@ -181,7 +193,7 @@ class Particles {
 // ------------------------------------------------------------
 const Save = {
   key: 'lazarus_ch1_save',
-  load() { try { return JSON.parse(localStorage.getItem(this.key) || 'null'); } catch (e) { return null; } },
-  save(d) { try { localStorage.setItem(this.key, JSON.stringify(d)); } catch (e) { /* ignore */ } },
-  clear() { try { localStorage.removeItem(this.key); } catch (e) { /* ignore */ } },
+  load() { return Store.getJSON(this.key); },
+  save(d) { Store.setJSON(this.key, d); },
+  clear() { Store.remove(this.key); },
 };

@@ -5,7 +5,7 @@
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const JS = path.join(__dirname, '../js');
 const read = (f) => fs.readFileSync(path.join(JS, f), 'utf8');
-const ctx = { localStorage: { getItem: () => null, setItem() {} } }; vm.createContext(ctx);
+const ctx = { Store: { get: () => null, set() {}, getJSON: () => null, setJSON() {} } }; vm.createContext(ctx);
 const langs = fs.readdirSync(path.join(JS, 'lang')).filter((f) => f.endsWith('.js'));
 vm.runInContext('var wrapText;' + read('i18n.js') + langs.map((f) => read('lang/' + f)).join('\n') + ';this.lookup=i18nLookup;', ctx);
 vm.runInContext('var Game={};' + read('char_lines.js') + ';this.CT=CHAR_TEXT;', ctx);

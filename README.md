@@ -7,9 +7,9 @@
 **LAZARUS** 是一款横版精准平台跳跃游戏，共 4 章、40 关。你扮演一台被人类遗弃了二十年的古董军用外骨骼（通关后还能换成另外四名可选角色），在「拉撒路协议」的保护下一次次死去、一次次重构，一路向上，前往世界最高处的中央核心。
 
 纯 H5（Canvas 2D + WebAudio）实现，**无任何外部素材**：画面与音乐/音效全部由代码实时生成。
-双击 `index.html` 即可在浏览器中运行（无需服务器）。原始策划案见 [`设定.md`](设定.md)。
+双击 `index.html` 即可在浏览器中运行（无需服务器）。PC / Steam 版用 Electron 打包，见下文[「桌面版（Electron / Steam）」](#桌面版electron--steam)。原始策划案见 [`设定.md`](设定.md)。
 
-**语言 / Language**：支持**英文**和**简体中文**，**默认英文**。在标题画面选「Language / 语言」即可切换（设置保存在浏览器本地）。
+**语言 / Language**：支持**英文**和**简体中文**，**默认英文**。在标题画面「设置 · Language」→「Language / 语言」即可切换（设置保存在本地）。
 
 ## 世界观
 
@@ -135,14 +135,19 @@ Omni-Mind 强制反转了拉撒路的重力，远程锁死了它的攻击模块�
 | 暂停 / 跳过对话 | Esc / Enter | Menu | Options | + |
 | 自毁重构 / 静音 | R / M | — | — | — |
 
-**自定义键位**：标题界面或暂停菜单 →「按键设置」。
+**自定义键位**：标题界面「设置」或暂停菜单 →「按键设置」。
 - 键盘每个动作可设 3 个键；手柄可改「跳跃 / 冲刺 / 攻击 / 仓库」的按钮（移动固定为左摇杆和十字键，Start 固定为暂停）。
 - 选中格子按确认（或鼠标点击）后按下新键即可；Esc / 手柄 Start 取消，Delete 清除该键位。
 - 新键如果已被其他动作占用，会自动从那个动作移除并提示。Esc、Enter、退格为菜单专用键，不能改绑。
-- 「向上键同时作为跳跃」可开关，默认关闭（向上只用来瞄准）；「恢复默认键位」一键还原。设置保存在浏览器本地，界面上的按键提示会跟着改变。
+- 「向上键同时作为跳跃」可开关，默认关闭（向上只用来瞄准）；「恢复默认键位」一键还原。设置保存在本地，界面上的按键提示会跟着改变。
 - 上表是默认键位。
 
-**声音设置**：标题界面或暂停菜单 →「声音设置」，可分别调节主音量、音乐、音效（0~100%，每格 5%），也可在这里切换静音。← → 调节，鼠标可点击或拖动滑块；设置保存在浏览器本地。
+**声音设置**：标题界面「设置」或暂停菜单 →「声音设置」，可分别调节主音量、音乐、音效（0~100%，每格 5%），也可在这里切换静音。← → 调节，鼠标可点击或拖动滑块；设置保存在本地。
+
+**显示设置**：标题界面「设置」或暂停菜单 →「显示设置」。
+- 显示模式：全屏 / 窗口。**F11** 或 **Alt + Enter** 随时切换。桌面版默认全屏，下次启动沿用上次的选择。
+- 画面清晰度：标准（Canvas 最多按 2 倍分辨率绘制）/ 高（最多 4 倍，4K 屏幕更锐利，但更吃显卡）。
+- 失去焦点时自动暂停（默认开）：切出窗口、最小化时自动暂停；正在死亡重构等过场时，回到可操作状态时再暂停。手柄断开时也会暂停。
 
 **手柄支持**：Xbox One / Series / 360、PS4 DualShock 4、PS5 DualSense、Switch Pro，以及其他被浏览器识别为标准布局的手柄。
 - 界面上的按键提示会随最近使用的设备自动切换（键盘 / Xbox / PS / Switch 图标）。
@@ -150,7 +155,7 @@ Omni-Mind 强制反转了拉撒路的重力，远程锁死了它的攻击模块�
 - 浏览器规定：手柄插上后需先按任意键才会被识别。震动在 Chrome / Edge 中支持最好。
 - 对浏览器报告为非标准布局的 PS / Switch Pro 手柄（常见于 Firefox），做了 DirectInput 布局重映射；这部分在真实硬件上未验证。
 
-触屏设备会自动显示虚拟按键。标题界面按数字键 **1~9、0** 可直接跳到 1-1 ~ 1-10，**Shift + 数字**跳到 2-1 ~ 2-10，**Alt + 数字**跳到 3-1 ~ 3-10，**Alt + Shift + 数字**跳到 4-1 ~ 4-10（测试用；部分浏览器会占用 Alt + 数字，可改用「章节选择」）。
+触屏设备会自动显示虚拟按键。标题界面按数字键 **1~9、0** 可直接跳到 1-1 ~ 1-10，**Shift + 数字**跳到 2-1 ~ 2-10，**Alt + 数字**跳到 3-1 ~ 3-10，**Alt + Shift + 数字**跳到 4-1 ~ 4-10（测试用，只在网页版和桌面版的 `npm run debug` 里有效，桌面正式版关闭；部分浏览器会占用 Alt + 数字，可改用「章节选择」）。
 
 第二章新增：空中再按跳跃 = **二段跳**（2-1 拿到推进囊后）。
 第三章新增：每次冲刺都会在原地留下一个持续 3 秒的**代码残影**（只在第三章生效）。
@@ -504,7 +509,46 @@ Boss 在眩晕时砍头与踩头共用每次 1 点的机会，所以武器不会
 - 9007 万脑残骸：击败最终 Boss 必掉 1 件（精良以上）
 - 稀有度权重：普通 80 · 精良 40 · 稀有 12 · 传说 3
 
-道具存档保存在浏览器本地（localStorage）。
+道具存档保存在本地（网页版：浏览器 localStorage；桌面版：用户目录下的文件，见「桌面版」）。
+
+## 桌面版（Electron / Steam）
+
+`desktop/` 目录用 Electron 把网页版原样打包成 PC 程序，游戏代码不分叉：preload 注入 `window.LAZARUS_DESKTOP`（存档、全屏、退出）和 `window.LAZARUS_STEAM`（成就），网页版没有这两个对象时一切照旧。
+
+```sh
+cd desktop
+npm install
+npm start            # 开发运行（和正式版一样：没有测试跳关）
+npm run debug        # 开发运行 + 测试功能：标题画面数字键跳关、F9 调试面板、F12 开发者工具
+npm run dist:win     # 打包 Windows x64 → desktop/dist/win-unpacked/
+npm run dist:linux   # 打包 Linux x64（Steam Deck）→ desktop/dist/linux-unpacked/
+```
+- 打包输出是**免安装目录**（Steam 分发用的就是整个目录，上传 `*-unpacked/` 即可）。游戏文件（`index.html`、`js/`）在打包时从仓库根目录复制进 `app.asar/game/`。
+- **测试功能**（标题画面数字键跳关、F9 调试面板）只能在未打包时用 `--debug` 打开；正式版即使在 Steam 启动参数里加 `--debug` 也打不开，玩家不能跳关刷成就。
+- 标题画面多一项「退出游戏」；没有菜单栏（也就没有 Ctrl+R 刷新这类浏览器快捷键）；只允许运行一个实例。
+
+**Steam**
+- App ID 写在 `desktop/package.json` 的 `lazarus.steamAppId`（现在是 Valve 的测试 ID 480，拿到自己的 App ID 后替换）；也可以用环境变量 `LAZARUS_STEAM_APPID` 临时覆盖，`LAZARUS_NO_STEAM=1` 完全不连 Steam。
+- 用 [steamworks.js](https://github.com/ceifa/steamworks.js)：成就、Steam 界面（Overlay，Shift+Tab）。Steam 没有运行时游戏照常能玩，只是不注入 `LAZARUS_STEAM`、不解锁 Steam 成就。
+- 正式 App ID 下，如果游戏不是从 Steam 启动的，会交给 Steam 重新启动（`restartAppIfNecessary`）。
+- 成就：在 Steamworks 后台建好 API 名称为 `CHIPS_CH1` ~ `CHIPS_CH4`、`CHIPS_ALL` 的成就即可（见「记忆芯片收藏」）。
+- Steam 界面打开时游戏收不到任何通知（steamworks.js 没有提供这个回调），所以不会自动暂停；切出窗口、最小化会暂停。
+
+**存档位置**（每个键一个 `.dat` 文件，内容和网页版 localStorage 里的一样）
+| 内容 | Windows | Linux / Steam Deck |
+|---|---|---|
+| 进度（周目存档 `lazarus_ch1_save`、仓库 / 收藏 `lazarus_profile`） | `%APPDATA%\LAZARUS\save\<SteamID64>\` | `~/.config/LAZARUS/save/<SteamID64>/` |
+| 设置（键位、音量、语言、显示、震动） | `%APPDATA%\LAZARUS\settings\` | `~/.config/LAZARUS/settings/` |
+
+没连上 Steam 时进度存在 `save/local/`。写入时先写临时文件再改名，写到一半断电也不会损坏旧存档。
+
+**Steam 云同步**（Steamworks 后台 → Steam Cloud → Auto-Cloud）：
+- Root：`WinAppDataRoaming`，Subdirectory：`LAZARUS/save/{64BitSteamID}`，Pattern：`*.dat`，OS：Windows。
+- Linux 用 Root Override：`WinAppDataRoaming` → `LinuxXdgConfigHome`（`~/.config`），其余不变。
+- 设置目录不同步（键位和画面设置跟着电脑走）。
+
+**上架前还需要**：`desktop/` 里放图标（`build/icon.png`，512×512 以上；Windows 另需 `icon.ico`），在 `package.json` 补上 `version` 与 `copyright`。
+- Linux 正式版会自动加 `--no-sandbox`：Steam 下载的文件没有 `chrome-sandbox` 需要的 setuid 权限，在 Steam 运行时里 Chromium 沙盒会启动失败；游戏只加载自己的本地文件。
 
 ## 代码结构
 ```
@@ -515,6 +559,8 @@ js/inventory.js   道具定义（ITEMDEFS）、稀有度、掉落生成器、本
 js/ui_inventory.js 仓库界面、章节选择
 js/ui_keys.js      按键设置界面
 js/ui_audio.js     声音设置界面（主音量 / 音乐 / 音效）
+js/ui_settings.js  设置入口（标题画面）、显示设置（全屏 / 清晰度 / 失焦暂停）
+desktop/          桌面版（Electron）：main.js 主进程（窗口 / 存档文件 / Steam）、preload.js 注入接口、package.json 打包配置
 js/item_art.js     仓库里武器 / 能力的高清矢量展示图
 js/weapons.js      武器切换、子弹 / 孢子 / 弹反 / 冲击波
 tools/check_levels.js     关卡可达性粗检（拉撒路 + 小扫）

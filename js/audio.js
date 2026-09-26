@@ -8,7 +8,7 @@ const Sound = (() => {
   // 音量（0~1，保存在本地）：主音量 / 音乐 / 音效
   const BASE = { master: 0.9, music: 0.5, sfx: 0.8 };
   const vol = { master: 1, music: 1, sfx: 1 };
-  try { Object.assign(vol, JSON.parse(localStorage.getItem('lazarus_audio') || '{}')); } catch (e) { /* */ }
+  Object.assign(vol, Store.getJSON('lazarus_audio') || {});
   for (const k in vol) vol[k] = Math.max(0, Math.min(1, +vol[k] || 0));
   let muted = false, curName = null, cur = null, trackGain = null, nextTime = 0, step = 0, pending = null;
   const N = (n) => 440 * Math.pow(2, (n - 69) / 12);
@@ -601,7 +601,7 @@ const Sound = (() => {
   }
   function setVolume(k, v) {
     vol[k] = Math.round(Math.max(0, Math.min(1, v)) * 20) / 20;
-    try { localStorage.setItem('lazarus_audio', JSON.stringify(vol)); } catch (e) { /* */ }
+    Store.setJSON('lazarus_audio', vol);
     if (!ctx) return;
     const node = { master, music: musicBus, sfx: sfxBus }[k];
     const target = k === 'master' && muted ? 0 : BASE[k] * vol[k];

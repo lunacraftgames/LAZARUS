@@ -25,7 +25,7 @@ Object.assign(Game, {
   openKeys(from) { this.keysFrom = from; this.state = 'keys'; this.keyRow = 0; this.keyCol = 0; this.keyMsg = ''; this.keyMsgT = 0; this.keyWait = null; Sound.sfx.select(); },
   closeKeys() {
     Input.capture = null; this.keyWait = null;
-    if (this.keysFrom === 'title') this.toTitle(); else this.state = 'paused';
+    if (this.keysFrom === 'settings') this.backToSettings(); else this.state = 'paused';
   },
   keyNote(msg) { this.keyMsg = msg; this.keyMsgT = 3; },
   padLabel(btn) { const g = PAD_GLYPHS[Input.usingPad ? Input.device : 'xbox'] || PAD_GLYPHS.xbox; return g[btn] || ('按钮' + btn); },

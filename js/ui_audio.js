@@ -13,7 +13,7 @@ const AUD_BAR = { x: 330, w: 400 };
 
 Object.assign(Game, {
   openAudio(from) { this.audioFrom = from; this.state = 'audio'; this.audRow = 0; this.audPreviewT = 0; Sound.init(); Sound.sfx.select(); },
-  closeAudio() { if (this.audioFrom === 'title') this.toTitle(); else this.state = 'paused'; },
+  closeAudio() { if (this.audioFrom === 'settings') this.backToSettings(); else this.state = 'paused'; },
   setVol(k, v) {
     const before = Sound.volumes[k];
     Sound.setVolume(k, v);

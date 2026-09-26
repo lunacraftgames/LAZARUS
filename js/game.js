@@ -18,10 +18,14 @@ const Game = {
   init() {
     this.canvas = document.getElementById('game');
     this.ctx = this.canvas.getContext('2d');
-    Input.init(); Art.init(); Inventory.init();
+    Input.init(); Art.init(); Inventory.init(); Display.init();
     Inventory.onGrant = (d, src) => this.onItemGrant(d, src);
-    Input.onPadChange = (on, name) => { this.toasts.push({ title: on ? '手柄已连接' : '手柄已断开', text: name + (on ? ' · 按键提示已切换' : ''), t: 0, short: true, color: on ? '#7ff' : '#f96' }); };
+    Input.onPadChange = (on, name) => { if (!on) this.pauseGame(); this.toasts.push({ title: on ? '手柄已连接' : '手柄已断开', text: name + (on ? ' · 按键提示已切换' : ''), t: 0, short: true, color: on ? '#7ff' : '#f96' }); };
     this.resize(); addEventListener('resize', () => this.resize());
+    // 失去焦点（切出窗口、最小化）时自动暂停；正在死亡重构等过场时先记下，回到游戏操作时再暂停
+    addEventListener('blur', () => { this.blurred = true; });
+    addEventListener('focus', () => { this.blurred = false; });
+    document.addEventListener('visibilitychange', () => { if (document.hidden) this.blurred = true; });
     // 鼠标 / 触屏点击：菜单项在绘制时登记可点击区域（this.hot）
     const toGame = (e) => { const r = this.canvas.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * VW, y: (e.clientY - r.top) / r.height * VH }; };
     const hitHot = (p) => { for (let i = this.hot.length - 1; i >= 0; i--) { const h = this.hot[i]; if (p.x >= h.x && p.x <= h.x + h.w && p.y >= h.y && p.y <= h.y + h.h) return h; } return null; };
@@ -66,7 +70,7 @@ const Game = {
   resize() {
     const s = Math.min(innerWidth / VW, innerHeight / VH);
     this.canvas.style.width = Math.floor(VW * s) + 'px'; this.canvas.style.height = Math.floor(VH * s) + 'px';
-    this.k = Math.min(2, Math.max(1, s * (window.devicePixelRatio || 1)));
+    this.k = Math.min(Display.maxScale(), Math.max(1, s * (window.devicePixelRatio || 1)));
     this.canvas.width = Math.round(VW * this.k); this.canvas.height = Math.round(VH * this.k);
   },
   setupTouch() {
@@ -123,9 +127,8 @@ const Game = {
     m.push({ label: '角色', act: 'chars', dot: CHAR_ORDER.some((id) => charDef(id).unlocked() && !Inventory.p.charSeen[id] && id !== 'lazarus') });
     if (Inventory.p.hiddenEnd) m.push({ label: '隐藏结局 · 记忆全集', act: 'hidden' });
     m.push({ label: '仓库 · 武器与外观', act: 'inv' });
-    m.push({ label: '按键设置', act: 'keys' });
-    m.push({ label: '声音设置', act: 'audio' });
-    m.push({ label: I18N.en ? 'Language / 语言: English' : '语言 / Language：简体中文', act: 'lang' }); // 语言名称不翻译，两种语言都认得出
+    m.push({ label: '设置 · Language', act: 'settings' }); // 按键 / 声音 / 显示 / 语言（带英文，两种语言的玩家都认得出）
+    if (DESKTOP) m.push({ label: '退出游戏', act: 'quit' });
     this.menu = m; this.menuSel = Math.min(this.menuSel, m.length - 1);
   },
   // 新的游戏：先选角色（只有这里能选，整个周目不能更换），再播开场剧情
@@ -420,6 +423,8 @@ const Game = {
       case 'chars': return this.updateChars(dt);
       case 'keys': return this.updateKeys(dt);
       case 'audio': return this.updateAudio(dt);
+      case 'display': return this.updateDisplay(dt);
+      case 'settings': return this.updateSettings(dt);
       case 'select': return this.updateSelect(dt);
       default: return this.updatePlay(dt);
     }
@@ -427,14 +432,18 @@ const Game = {
   updateTitle() {
     if (Input.hit('mu')) { this.menuSel = (this.menuSel + this.menu.length - 1) % this.menu.length; Sound.sfx.select(); }
     if (Input.hit('md')) { this.menuSel = (this.menuSel + 1) % this.menu.length; Sound.sfx.select(); }
-    // 测试用：数字键 1~0 跳到第一章，Shift + 数字跳到第二章，Alt + 数字跳到第三章，Alt + Shift + 数字跳到第四章
+    // 测试用（DEBUG，桌面正式版关闭）：数字键 1~0 跳到第一章，Shift + 数字跳到第二章，Alt + 数字跳到第三章，Alt + Shift + 数字跳到第四章
+    if (DEBUG) this.debugJump();
+    if (this.state !== 'title') return;
+    if (Input.hit('confirm') && this.stateT > 0.3) this.activateTitle();
+  },
+  debugJump() {
     const shift = !!(Input.raw.ShiftLeft || Input.raw.ShiftRight), alt = !!(Input.raw.AltLeft || Input.raw.AltRight);
     for (let i = 0; i < 10; i++) if (Input.code('Digit' + ((i + 1) % 10))) {
       const ch = alt && shift ? 4 : alt ? 3 : shift ? 2 : 1, base = chapterStart(ch), j = base + i;
       if (base < 0 || j >= LEVELS.length || chapterOf(LEVELS[j]) !== ch) return;
       Sound.init(); Sound.sfx.confirm(); this.runFull = false; this.startLevel(j); return;
     }
-    if (Input.hit('confirm') && this.stateT > 0.3) this.activateTitle();
   },
   activateTitle() {
     Sound.init(); Sound.sfx.confirm();
@@ -444,9 +453,8 @@ const Game = {
     else if (m.act === 'inv') this.openInventory('title');
     else if (m.act === 'chars') this.openChars('view');
     else if (m.act === 'hidden') { this.playLines(HIDDEN_END, () => this.toTitle()); Sound.music('ending'); }
-    else if (m.act === 'keys') this.openKeys('title');
-    else if (m.act === 'audio') this.openAudio('title');
-    else if (m.act === 'lang') { I18N.set(I18N.en ? 'zh' : 'en'); const sel = this.menuSel; this.toTitle(); this.menuSel = sel; }
+    else if (m.act === 'settings') this.openSettings();
+    else if (m.act === 'quit') DESKTOP.quit();
     else this.newGame();
   },
   // 登记一个可点击区域（本帧有效）
@@ -487,7 +495,7 @@ const Game = {
     Save.save({ level: 0, deaths: 0, chips: [], time: 0 }); Save.clear(); this.toTitle();
   },
   updatePause() {
-    const opts = 8;
+    const opts = 9; // 与 drawPause 里的菜单项数一致
     if (Input.hit('mu')) { this.pauseSel = (this.pauseSel + opts - 1) % opts; Sound.sfx.select(); }
     if (Input.hit('md')) { this.pauseSel = (this.pauseSel + 1) % opts; Sound.sfx.select(); }
     if (Input.hit('pause') || Input.hit('back')) { this.state = 'play'; return; }
@@ -500,14 +508,22 @@ const Game = {
       else if (this.pauseSel === 1) this.openInventory('paused');
       else if (this.pauseSel === 2) this.openKeys('paused');
       else if (this.pauseSel === 3) this.openAudio('paused');
-      else if (this.pauseSel === 4) Input.setRumble(!Input.rumbleOn);
-      else if (this.pauseSel === 5) { I18N.set(I18N.en ? 'zh' : 'en'); this.relangRadio(); } // 切换语言（和标题界面的同一个开关）
-      else if (this.pauseSel === 6) this.startLevel(this.levelIndex, true);
+      else if (this.pauseSel === 4) this.openDisplay('paused');
+      else if (this.pauseSel === 5) Input.setRumble(!Input.rumbleOn);
+      else if (this.pauseSel === 6) { I18N.set(I18N.en ? 'zh' : 'en'); this.relangRadio(); } // 切换语言（和标题界面「设置」里的同一个开关）
+      else if (this.pauseSel === 7) this.startLevel(this.levelIndex, true);
       else { if (this.boss) this.boss.stopSounds(); this.toTitle(); }
     }
   },
+  // 进入暂停（只在正常操作时；死亡重构、过关等过场不打断）
+  pauseGame() {
+    if (this.state !== 'play') return false;
+    this.state = 'paused'; this.pauseSel = 0; if (this.boss) this.boss.stopSounds();
+    return true;
+  },
   updatePlay(dt) {
-    if (this.state === 'play' && Input.hit('pause')) { this.state = 'paused'; this.pauseSel = 0; if (this.boss) this.boss.stopSounds(); return; }
+    if (Input.hit('pause') && this.pauseGame()) return;
+    if (this.blurred && Display.opt.focusPause && this.pauseGame()) return;
     if (this.state === 'play' && Input.hit('restart')) { this.killPlayer(); }
     if (this.state === 'play' && Input.hit('inv')) { if (this.boss) this.boss.stopSounds(); this.openInventory('play'); return; }
     this.updateRadio(dt);
@@ -671,6 +687,8 @@ const Game = {
       case 'chars': return this.renderChars(ctx);
       case 'keys': return this.renderKeys(ctx);
       case 'audio': return this.renderAudio(ctx);
+      case 'display': return this.renderDisplay(ctx);
+      case 'settings': return this.renderSettings(ctx);
       case 'select': return this.renderSelect(ctx);
       default: this.renderPlay(ctx);
     }
@@ -973,10 +991,10 @@ const Game = {
     ctx.textAlign = 'center';
     ctx.fillStyle = '#f2ead6'; ctx.font = 'bold 32px ' + FONT; ctx.fillText('暂 停', VW / 2, VH / 2 - 110);
     const lang = I18N.en ? 'Language / 语言: English' : '语言 / Language：简体中文'; // 语言名称不翻译，两种语言都认得出
-    ['继续游戏', '仓库 · 武器与外观', '按键设置', '声音设置', tr('手柄震动：%{v}', { v: tr(Input.rumbleOn ? '开' : '关') }), lang, '重新开始本关', '返回标题'].forEach((s, i) => {
+    ['继续游戏', '仓库 · 武器与外观', '按键设置', '声音设置', '显示设置', tr('手柄震动：%{v}', { v: tr(Input.rumbleOn ? '开' : '关') }), lang, '重新开始本关', '返回标题'].forEach((s, i) => {
       ctx.fillStyle = i === this.pauseSel ? '#7ff' : '#888'; ctx.font = (i === this.pauseSel ? 'bold ' : '') + '18px ' + FONT;
-      ctx.fillText((i === this.pauseSel ? '▶ ' : '') + s, VW / 2, VH / 2 - 64 + i * 32);
-      this.addHot(VW / 2 - 170, VH / 2 - 87 + i * 32, 340, 30, () => this.activatePause(), () => { this.pauseSel = i; });
+      ctx.fillText((i === this.pauseSel ? '▶ ' : '') + s, VW / 2, VH / 2 - 84 + i * 28);
+      this.addHot(VW / 2 - 170, VH / 2 - 105 + i * 28, 340, 28, () => this.activatePause(), () => { this.pauseSel = i; });
     });
     ctx.fillStyle = 'rgba(200,200,200,0.55)'; ctx.font = '12px ' + FONT;
     const hp = [{ k: 'move' }, '移动', { k: 'jump' }, '跳跃', { k: 'dash' }, '冲刺'];
