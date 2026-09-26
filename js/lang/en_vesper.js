@@ -19,7 +19,7 @@ Object.assign(I18N.EN, {
   '[存档] 冲撞模块已为拉撒路解锁 · 赤影的 {dash} 闪现不伤人，但途中无敌——直接穿过去': '[ARCHIVED] Ram Module unlocked for Lazarus · Vesper\'s {dash} blink deals no damage, but you\'re invincible in transit — go straight through',
   '前面那几只蜘蛛，闪到它们身后，再补一刀。': 'Those spiders ahead — blink behind them, then finish them off.',
   '激光之间有蜘蛛巡逻。闪现途中无敌，直接穿过去比等待更快。': 'Spiders patrol between the lasers. You\'re invincible mid-blink — going straight through is faster than waiting.',
-  '一把仪仗军刀。你的手穿过了刀柄——你握不住实物。协议会替拉撒路把它存档。': 'A ceremonial sabre. Your hand passes through the hilt — you can\'t hold anything solid. The Protocol will archive it for Lazarus.',
+  '一把仪仗军刀。你的手穿过了刀柄——你握不住实物。但展柜里还存着一段兵器数据，碰一下它，数据刃会学会的。': 'A ceremonial sabre. Your hand passes through the hilt — you can\'t hold solid things. But the case still stores some weapon data. Touch it, and your data blade will learn.',
   '没关系。你手里本来就有一把刀——一段锋利的代码。': 'Never mind. You already have a blade — a sharp line of code.',
   '[存档] 仪仗军刀已为拉撒路解锁 · 赤影：{attack} 数据刃 · 空中按住 ↓ 再攻击 = 下劈弹跳': '[ARCHIVED] Ceremonial sabre unlocked for Lazarus · Vesper: {attack} data blade · hold ↓ in mid-air and attack = down-slash bounce',
   '小心那两个展柜。你出手比它们快——先下手为强。': 'Watch those two display cases. You\'re faster than they are — strike first.',

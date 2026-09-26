@@ -90,7 +90,16 @@ const Game = {
   freeze(t) { this.freezeT = Math.max(this.freezeT, t); },
   flash(a, c) { this.flashA = Math.max(this.flashA, a); this.flashC = c || '#fff'; },
   say(lines) {
-    for (const [who, text] of lines) this.radio.queue.push({ who, text: charText(text), t: 0 }); // 台词按当前角色调整（见 char_lines.js）
+    for (const [who, text] of lines) this.radio.queue.push({ who, text: charText(text), src: text, t: 0 }); // 台词按当前角色调整（见 char_lines.js）；src = 原文，切换语言时重新翻译
+  },
+  // 暂停界面切换语言后：正在播放 / 排队中的无线电台词换成新语言（正在打字的那句按原来的进度比例继续）
+  relangRadio() {
+    const R = this.radio;
+    for (const q of R.queue) if (q.src != null) q.text = charText(q.src);
+    if (R.cur && R.cur.src != null) {
+      const k = R.cur.text.length ? Math.min(1, R.cur.t * this.cps() / R.cur.text.length) : 1;
+      R.cur.text = Input.fmt(charText(R.cur.src)); R.cur.t = k * R.cur.text.length / this.cps();
+    }
   },
   // 打字机速度（字 / 秒）：英文一句话的字符数大约是中文的 2.5 倍，打得更快、停留按字数少算一些
   cps() { return I18N.en ? 62 : 30; },
@@ -180,7 +189,7 @@ const Game = {
           case 'o': { const id = def.id + '#' + chipIdx++; if (!this.chips.has(id)) lateProps.push(() => new Chip(x, y, id)); break; }
           case 'L': { const idx = laserIdx++; lateProps.push(() => new LaserGate(x, y, idx, this.world)); break; }
           case 'H': case 'V': this.movers.push({ x, y, c }); break;
-          case 'A': case 'B': case 'D': case 'F': case 'Z': { const key = { A: 'dashStrike', B: 'sabre', D: 'doubleJump', F: 'flintlock', Z: 'sporeGun' }[c]; if (!Inventory.ability(key)) lateProps.push(() => new AbilityPickup(x * TILE + 16, (y + 1) * TILE, key)); break; }
+          case 'A': case 'B': case 'D': case 'F': case 'Z': { const key = { A: 'dashStrike', B: 'sabre', D: 'doubleJump', F: 'flintlock', Z: 'sporeGun' }[c]; if (pickupWanted(key)) lateProps.push(() => new AbilityPickup(x * TILE + 16, (y + 1) * TILE, key)); break; } // 拉撒路：武器 / 能力；其他角色：自己的专属模块
           default:
             if (PROP_FACTORIES[c]) { const f = PROP_FACTORIES[c]; lateProps.push(() => f(x, y, this)); break; }
             this.enemySpawns.push({ id: def.id + ':' + x + ',' + y, type: c, cx: x, cy: y });
@@ -198,6 +207,7 @@ const Game = {
     this.permDead = new Set();
     this.checkpoint = { x: spawn.cx * TILE + 6, y: (spawn.cy + 1) * TILE - 28 };
     Inventory.charWeapon = charDef(this.charId).weapon || null; applyCharMusic(this.charId);
+    grantEarlierModules(this.charId, i); // 章节选择直接进后面的关卡：之前关卡里的专属模块补上
     this.player = new Player(this.checkpoint.x, this.checkpoint.y, this.charId);
     this.player.spawnT = 0.45;
     this.radioTriggers = def.radio.map((r, k) => Object.assign({ fired: this.radioHeard.has(def.id + '#' + k), key: def.id + '#' + k }, r));
@@ -344,7 +354,7 @@ const Game = {
     }
     this.say(RADIO.bossDefeat);
     setTimeout(() => Inventory.drop(9001), 1200);
-    if (!Inventory.ability('relicBlade')) this.pickup = new AbilityPickup(clamp(this.boss.x, 120, 840), ARENA.FLOOR, 'relicBlade');
+    if (pickupWanted('relicBlade')) this.pickup = new AbilityPickup(clamp(this.boss.x, 120, 840), ARENA.FLOOR, 'relicBlade');
   },
   // 进入 / 离开高密度培养液
   onSplash(p, entering) {
@@ -354,6 +364,7 @@ const Game = {
     if (entering && !this.waterHinted) { this.waterHinted = true; this.toastHint(Input.fmt('培养液中重力很低：可以连续按 {jump} 上浮，但很难刹车')); }
   },
   pickupAbility(key) {
+    if (this.charId !== 'lazarus' && MODULES[this.charId]) return this.pickupModule(key); // 其他角色：拿到自己的专属模块
     Inventory.unlockAbility(key);
     if (key === 'relicBlade') { Inventory.unlockAbility('dashStrike'); Inventory.unlockAbility('sabre'); }
     if (WEAPON_KEYS.includes(key)) Inventory.setWeapon(key); // 新武器拿到手就装备上
@@ -370,8 +381,6 @@ const Game = {
     }[key];
     this.toast(T[0], Input.fmt(T[1]));
     this.say(T[2]);
-    const C = this.player.C;
-    if ((C.weapon && (WEAPON_KEYS.includes(key) || key === 'dashStrike')) || (C.noDoubleJump && key === 'doubleJump')) this.toast(tr('%{name}用不了它', { name: tr(C.name) }), tr('已经为拉撒路永久解锁。%{name}使用自己的专属能力。', { name: tr(C.name) }));
     if (key === 'relicBlade') this.bossDoneT = Math.min(this.bossDoneT, 0);
   },
   onItemGrant(d, src) {
@@ -486,7 +495,7 @@ const Game = {
     Save.save({ level: 0, deaths: 0, chips: [], time: 0 }); Save.clear(); this.toTitle();
   },
   updatePause() {
-    const opts = 8; // 与 drawPause 里的菜单项数一致
+    const opts = 9; // 与 drawPause 里的菜单项数一致
     if (Input.hit('mu')) { this.pauseSel = (this.pauseSel + opts - 1) % opts; Sound.sfx.select(); }
     if (Input.hit('md')) { this.pauseSel = (this.pauseSel + 1) % opts; Sound.sfx.select(); }
     if (Input.hit('pause') || Input.hit('back')) { this.state = 'play'; return; }
@@ -501,7 +510,8 @@ const Game = {
       else if (this.pauseSel === 3) this.openAudio('paused');
       else if (this.pauseSel === 4) this.openDisplay('paused');
       else if (this.pauseSel === 5) Input.setRumble(!Input.rumbleOn);
-      else if (this.pauseSel === 6) this.startLevel(this.levelIndex, true);
+      else if (this.pauseSel === 6) { I18N.set(I18N.en ? 'zh' : 'en'); this.relangRadio(); } // 切换语言（和标题界面「设置」里的同一个开关）
+      else if (this.pauseSel === 7) this.startLevel(this.levelIndex, true);
       else { if (this.boss) this.boss.stopSounds(); this.toTitle(); }
     }
   },
@@ -533,7 +543,7 @@ const Game = {
     if (this.state === 'play') p.update(dt, this);
     for (const c of this.crumbles) c.update(dt, this);
     for (const pr of this.props) pr.update(dt, this);
-    for (const e of this.enemies) if (e.alive) { if (e.stunT > 0) e.stunT -= dt; else e.update(dt, this); } // 被信号弹打晕：原地不动
+    for (const e of this.enemies) if (e.alive) { if (e.stunT > 0) { e.stunT -= dt; if (e.stunT <= 0 && e.burn) { e.burn = false; this.killEnemy(e); } } else e.update(dt, this); } // 被信号弹打晕：原地不动（「燃烧信号弹」：晕眩结束时烧毁）
     if (this.exhibit) this.exhibit.update(dt, this);
     if (this.boss) { this.boss.update(dt, this); this.boss.touchPlayer(this); }
     if (this.pickup) this.pickup.update(dt, this);
@@ -562,7 +572,7 @@ const Game = {
           // 冲撞模块
           if (dashStrike && !(e instanceof Chandelier && e.state !== 'fall')) {
             const r = this.strike(e, 'dash');
-            if (r === 'kill') { p.canDash = true; this.freeze(0.05); continue; }
+            if (r === 'kill') { p.canDash = true; this.freeze(0.05); if (p.C.rollStrike && p.mod('dashStrike')) this.chainKill(e); continue; } // 小扫「连锁弹射」
             if (r === 'block') { p.dashT = 0; p.vx = -p.dashDir.x * 340; p.vy = -320; continue; }
             if (r === 'bounced') continue;
           }
@@ -762,7 +772,7 @@ const Game = {
       ctx.strokeStyle = `rgba(255,50,40,${a * Math.min(1, p.dashLock)})`; ctx.lineWidth = 1.5; ctx.setLineDash([6, 5]);
       ctx.beginPath(); ctx.moveTo(d.x + 14, d.y + 12); ctx.lineTo(p.cx, p.cy); ctx.stroke(); ctx.setLineDash([]);
     }
-    const x = p.cx, y = p.y - 16, k = p.dashLock / 2;
+    const x = p.cx, y = p.y - 16, k = Math.min(1, p.dashLock / (this.core && this.core.offlineT > 0 ? C4.OFFLINE : 2));
     ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.stroke();
     ctx.strokeStyle = '#f44'; ctx.beginPath(); ctx.arc(x, y, 7, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * k); ctx.stroke();
     ctx.fillStyle = '#f66'; ctx.font = 'bold 9px ' + FONT; ctx.textAlign = 'center'; ctx.fillText('⚡', x, y + 3); ctx.textAlign = 'left';
@@ -805,10 +815,10 @@ const Game = {
     ctx.font = '10px ' + MONO; ctx.fillStyle = 'rgba(200,200,200,0.7)'; ctx.fillText(p.C.jet ? 'SLAM' : p.C.blink ? 'BLINK' : p.C.grapple ? 'HOOK' : 'DASH', dx + 10, 28); // 阿特拉斯的冲刺键是地面猛击
     let col = '#6ff', label = 'READY';
     if (p.lockT > 0) { col = (this.t * 10) % 2 < 1 ? '#f35' : '#a13'; label = `LOCK ${p.lockT.toFixed(1)}s`; }
-    else if (p.dashLock > 0) { col = (this.t * 10) % 2 < 1 ? '#f33' : '#a11'; label = `ALARM ${p.dashLock.toFixed(1)}s`; }
+    else if (p.dashLock > 0) { col = (this.t * 10) % 2 < 1 ? '#f33' : '#a11'; label = `${this.core && this.core.offlineT > 0 ? 'OFFLINE' : 'ALARM'} ${p.dashLock.toFixed(1)}s`; }
     else if (p.hook) { col = '#ff9a3c'; label = 'HOOKED'; }
     else if (!p.canDash) { col = '#666'; label = 'USED'; }
-    ctx.fillStyle = col; ctx.fillRect(dx + 10, 34, 98 * (p.lockT > 0 ? p.lockT / 1.5 : p.dashLock > 0 ? p.dashLock / 2 : 1), 6);
+    ctx.fillStyle = col; ctx.fillRect(dx + 10, 34, 98 * (p.lockT > 0 ? p.lockT / 1.5 : p.dashLock > 0 ? Math.min(1, p.dashLock / (this.core && this.core.offlineT > 0 ? C4.OFFLINE : 2)) : 1), 6);
     ctx.font = 'bold 10px ' + MONO; ctx.fillText(label, dx + 48, 28);
     const wk = Inventory.weapon();
     if (wk) {
@@ -824,8 +834,13 @@ const Game = {
       const k = p.atkCd > 0 ? 1 - p.atkCd / (p.atkCdMax || 0.17) : 1;
       ctx.fillStyle = 'rgba(255,255,255,0.1)'; ctx.fillRect(wx + 46, 34, 62, 6);
       ctx.fillStyle = p.atkCd > 0 ? '#777' : col; ctx.fillRect(wx + 46, 34, 62 * k, 6);
-      if (p.chargeT >= (WPN[wk].charge || 99)) { ctx.fillStyle = (this.t * 10) % 2 < 1 ? '#ffd070' : '#fff'; ctx.fillRect(wx + 46, 43, 62, 3); }
-      else if (WPN[wk].charge && p.chargeT > 0) { ctx.fillStyle = 'rgba(255,210,120,0.7)'; ctx.fillRect(wx + 46, 43, 62 * p.chargeT / WPN[wk].charge, 3); }
+      const MC = p.modCharge ? p.modCharge() : null, full = MC ? MC.t2 || MC.t1 : WPN[wk].charge; // 模块蓄力：满格 = 重击，中间的刻度 = 远程
+      if (full && p.chargeT >= full) { ctx.fillStyle = (this.t * 10) % 2 < 1 ? '#ffd070' : '#fff'; ctx.fillRect(wx + 46, 43, 62, 3); }
+      else if (full && p.chargeT > 0) { ctx.fillStyle = MC && MC.t1 && p.chargeT >= MC.t1 ? '#7ff' : 'rgba(255,210,120,0.7)'; ctx.fillRect(wx + 46, 43, 62 * p.chargeT / full, 3); }
+      if (MC && MC.t1 && MC.t2) { ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.fillRect(wx + 46 + 62 * MC.t1 / MC.t2, 42, 1, 5); }
+      if (MODULES[p.chId]) { // 专属武器模块：六个小格，拿到的点亮
+        MOD_SLOTS.forEach((sl, i) => { const on = p.mod(sl); ctx.fillStyle = on ? `rgb(${MODULES[p.chId].color})` : 'rgba(255,255,255,0.15)'; ctx.fillRect(wx + 46 + i * 11, 49, 8, 3); });
+      }
       if (many) this.addHot(wx, 12, ww, 44, () => { if (this.state === 'play') this.swapWeapon(); });
     }
     // 二段跳 / 粘液
@@ -841,7 +856,7 @@ const Game = {
       ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(jx, 12, 64, 44);
       ctx.font = '10px ' + MONO; ctx.fillStyle = 'rgba(200,200,200,0.7)'; ctx.fillText(p.slimeT > 0 ? 'SLIME' : 'FUEL', jx + 10, 28);
       ctx.fillStyle = 'rgba(255,255,255,0.1)'; ctx.fillRect(jx + 10, 34, 44, 6);
-      ctx.fillStyle = p.slimeT > 0 ? '#7c4' : p.dashLock > 0 ? '#f33' : p.jetOn ? '#ffd070' : '#f5b52e'; ctx.fillRect(jx + 10, 34, 44 * (p.slimeT > 0 ? p.slimeT / PL.SLIME_T : p.fuel / p.C.fuel), 6);
+      ctx.fillStyle = p.slimeT > 0 ? '#7c4' : p.dashLock > 0 ? '#f33' : p.jetOn ? '#ffd070' : '#f5b52e'; ctx.fillRect(jx + 10, 34, 44 * (p.slimeT > 0 ? p.slimeT / PL.SLIME_T : p.fuel / p.maxFuel()), 6);
     } else if (Inventory.ability('doubleJump') && !p.C.noDoubleJump) {
       const jx = dx + (Inventory.canAttack() ? 250 : 124);
       ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(jx, 12, 64, 44);
@@ -975,10 +990,11 @@ const Game = {
     ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0, 0, VW, VH);
     ctx.textAlign = 'center';
     ctx.fillStyle = '#f2ead6'; ctx.font = 'bold 32px ' + FONT; ctx.fillText('暂 停', VW / 2, VH / 2 - 110);
-    ['继续游戏', '仓库 · 武器与外观', '按键设置', '声音设置', '显示设置', tr('手柄震动：%{v}', { v: tr(Input.rumbleOn ? '开' : '关') }), '重新开始本关', '返回标题'].forEach((s, i) => {
+    const lang = I18N.en ? 'Language / 语言: English' : '语言 / Language：简体中文'; // 语言名称不翻译，两种语言都认得出
+    ['继续游戏', '仓库 · 武器与外观', '按键设置', '声音设置', '显示设置', tr('手柄震动：%{v}', { v: tr(Input.rumbleOn ? '开' : '关') }), lang, '重新开始本关', '返回标题'].forEach((s, i) => {
       ctx.fillStyle = i === this.pauseSel ? '#7ff' : '#888'; ctx.font = (i === this.pauseSel ? 'bold ' : '') + '18px ' + FONT;
-      ctx.fillText((i === this.pauseSel ? '▶ ' : '') + s, VW / 2, VH / 2 - 76 + i * 30);
-      this.addHot(VW / 2 - 170, VH / 2 - 98 + i * 30, 340, 30, () => this.activatePause(), () => { this.pauseSel = i; });
+      ctx.fillText((i === this.pauseSel ? '▶ ' : '') + s, VW / 2, VH / 2 - 84 + i * 28);
+      this.addHot(VW / 2 - 170, VH / 2 - 105 + i * 28, 340, 28, () => this.activatePause(), () => { this.pauseSel = i; });
     });
     ctx.fillStyle = 'rgba(200,200,200,0.55)'; ctx.font = '12px ' + FONT;
     const hp = [{ k: 'move' }, '移动', { k: 'jump' }, '跳跃', { k: 'dash' }, '冲刺'];
@@ -988,7 +1004,7 @@ const Game = {
     if (!Input.usingPad) hp.push({ k: 'restart' }, '自毁重构', { k: 'mute' }, '静音');
     drawHintLine(ctx, VW / 2, VH - 50, hp, { align: 'center' });
     drawHintLine(ctx, VW / 2, VH - 24, [{ k: 'confirm' }, '确认', { k: 'back' }, '返回'], { align: 'center' });
-    if (Input.usingPad) { ctx.fillStyle = 'rgba(120,255,220,0.6)'; ctx.font = '12px ' + FONT; ctx.fillText('当前设备：' + Input.padName, VW / 2, 430); }
+    if (Input.usingPad) { ctx.fillStyle = 'rgba(120,255,220,0.6)'; ctx.font = '12px ' + FONT; ctx.fillText('当前设备：' + Input.padName, VW / 2, VH - 72); }
     ctx.textAlign = 'left';
   },
 
@@ -1080,7 +1096,10 @@ const Game = {
     ctx.fillText(`重构次数　${this.deaths}　·　${diffName(this.diff)}`, VW / 2, 250);
     ctx.fillText(`记忆芯片　${chipsIn(this.chips, ch)} / ${chipTotal(ch)}`, VW / 2, 282);
     ctx.fillText(tr('用时　%{m}分%{s}秒', { m: mm, s: String(ss).padStart(2, '0') }), VW / 2, 314);
-    if (E.reward && Inventory.ability(E.reward[0])) { ctx.fillStyle = '#fc6'; ctx.font = 'bold 15px ' + FONT; ctx.fillText(charText(E.reward[1]), VW / 2, 346); }
+    if (E.reward) { // 章节奖励：拉撒路显示武器 / 能力；其他角色显示同一个拾取点的专属模块
+      const md = MODULES[this.charId] ? modDef(this.charId, E.reward[0]) : null;
+      if (md ? hasMod(this.charId, E.reward[0]) : Inventory.ability(E.reward[0])) { ctx.fillStyle = '#fc6'; ctx.font = 'bold 15px ' + FONT; ctx.fillText(md ? tr('专属模块：%{name}', { name: tr(md.name) }) : charText(E.reward[1]), VW / 2, 346); }
+    }
     else if (E.final) {
       let got = 0, tot = 0; for (let c = 1; CHAPTERS[c]; c++) { got += this.chipLogIn(c); tot += chipTotal(c); }
       ctx.fillStyle = Inventory.p.hiddenEnd ? '#f6c' : '#fc6'; ctx.font = 'bold 15px ' + FONT;

@@ -487,28 +487,38 @@ makeEnemy = function (s, world) { // eslint-disable-line no-func-assign
 };
 // 地图字符 → 场景物件
 PROP_FACTORIES.g = (x, y) => new SlimePuddle(x * TILE + 16, (y + 1) * TILE, 0);
-PROP_FACTORIES.D = (x, y) => (Inventory.ability('doubleJump') ? null : new AbilityPickup(x * TILE + 16, (y + 1) * TILE, 'doubleJump'));
+PROP_FACTORIES.D = (x, y) => (pickupWanted('doubleJump') ? new AbilityPickup(x * TILE + 16, (y + 1) * TILE, 'doubleJump') : null); // 其他角色：专属模块
 PICKUP_INFO.doubleJump = { label: '推进囊', color: '120,240,255' };
 
 // ============================================================
 //  Boss：母体子系统 · 繁育者（The Incubator）
-//  本身没有攻击力，疯狂孵化前两章的小怪。每清空一波，它会因「过载」降下高度、
-//  打开外壳露出核心 5 秒——抓紧时间输出。
+//  疯狂孵化小怪，自己也会喷吐粘液。清空一波后，要去两侧平台上打开「过载阀」，
+//  它才会因过载降下高度、打开外壳露出核心 5 秒。
+//  外壳一共三层（每层 20 点），每次暴露最多击穿一层——击穿后核心立刻缩回去。
+//  一阶段：升起时喷出一圈粘液滴（粘住会跳跃减半、不能二段跳）
+//  二阶段起：刷怪时也会朝你吐粘液；天花板垂下脐带沿地面横扫（地面发红 = 跳起来 / 站到平台上）
+//  三阶段：核心暴露时周期性放电（核心闪白 = 马上退开）
 // ============================================================
-const INC = { X: 480, Y_HIGH: 150, Y_LOW: 318, TUBES: [4, 25], FLOOR: 480 };
+const INC = { X: 480, Y_HIGH: 150, Y_LOW: 318, TUBES: [4, 25], FLOOR: 480, CEIL: 64, VALVE_Y: 352, PULSE_R: 92 };
 const INC_WAVES = [
-  ['s', 's', 'x'],
-  ['x', 'x', 'r', 'r', 'r'],
-  ['k', 's', 'd'],
-  ['m', 'x', 'r', 'r', 'r', 'r'],
-  ['k', 'x', 'x', 'd'],
-  ['m', 'm', 'd', 'x', 'r', 'r'],
+  ['s', 'x', 'r', 'r'],
+  ['x', 'x', 'r', 'r', 'r', 'r'],
+  ['k', 'x', 'd', 'r', 'r'],
+  ['m', 'x', 'x', 'r', 'r', 'r', 'r'],
+  ['k', 'x', 'x', 'd', 'r', 'r'],
+  ['m', 'm', 'x', 'x', 'd', 'r', 'r'],
 ];
+// 繁育者吐出的粘液滴：和寄生体的一样，只是不限制水平速度
+class IncSpit extends SlimeBlob {
+  constructor(x, y, vx, vy) { super(x, y, 0); this.vx = vx; this.vy = vy; }
+}
 class Incubator {
   constructor(g, short) {
     this.x = INC.X; this.y = -140; this.maxHp = 60; this.hp = 60; this.state = 'intro'; this.t = 0; this.short = short;
     this.flash = 0; this.dead = false; this.wave = 0; this.queue = []; this.mobs = []; this.spawnT = 0; this.open = 0; this.hitCd = 0; this.beat = 0;
-    this.title = '母体子系统 · 繁育者  THE INCUBATOR'; this.marks = [40 / 60, 20 / 60]; this.firstExpose = true; this.phaseSeen = 1;
+    this.title = '母体子系统 · 繁育者  THE INCUBATOR'; this.marks = [40 / 60, 20 / 60]; this.firstExpose = true; this.firstValve = true; this.firstShell = true; this.phaseSeen = 1;
+    this.valves = INC.TUBES.map((tube) => ({ x: tube * TILE + 16, on: false, t: 0 }));
+    this.floorHp = 40; this.spitT = 3; this.sweepT = 3; this.hz = []; this.pulseT = 0;
   }
   get active() { return !['dying', 'dead'].includes(this.state); }
   get phase() { return this.hp > 40 ? 1 : this.hp > 20 ? 2 : 3; }
@@ -517,11 +527,13 @@ class Incubator {
     const left = this.mobs.filter((e) => e.alive).length + this.queue.length;
     if (this.state === 'exposed') return `核心暴露  ${Math.max(0, 5 - this.t).toFixed(1)}s`;
     if (this.state === 'overload') return '过载中……';
+    if (this.state === 'valves') return tr('打开过载阀 %{n} / 2', { n: this.valves.filter((v) => v.on).length });
     if (!this.wave || this.state === 'rest') return '孵化准备中';
     return tr('第 %{w} 波 · 剩余 %{n}', { w: this.wave, n: left });
   }
   body() { return { x: this.x - 70, y: this.y - 70, w: 140, h: 140 }; }
   core() { return { x: this.x - 28, y: this.y - 8, w: 56, h: 52 }; }
+  valveRect(v) { return { x: v.x - 14, y: INC.VALVE_Y - 24, w: 28, h: 24 }; }
   stopSounds() {}
   startWave(g) {
     const list = INC_WAVES[this.wave < INC_WAVES.length ? this.wave : 3 + ((this.wave - 3) % 3)].slice();
@@ -545,11 +557,76 @@ class Incubator {
     Sound.sfx.hatch();
     g.particles.burst(mx, my - 10, 14, { color: ['#c86ab0', '#7ff', '#fbd'], smin: 40, smax: 160, grav: 400, lmin: 0.3, lmax: 0.6 });
   }
+  // ---------------- 攻击 ----------------
+  // 朝主角吐几滴粘液（抛物线，落地留下 6 秒的粘液池）
+  spitAt(g, n) {
+    const p = g.player, ox = this.x, oy = this.y + 60, T = 0.95;
+    for (let i = 0; i < n; i++) {
+      const tx = clamp(p.cx + (i - (n - 1) / 2) * 70 + p.vx * 0.3, 50, 910), ty = p.cy;
+      g.projectiles.push(new IncSpit(ox, oy, (tx - ox) / T, (ty - oy - 0.5 * 900 * T * T) / T));
+    }
+    Sound.sfx.splat(); this.flash = Math.max(this.flash, 0.06);
+  }
+  // 升起时向四周喷出一圈粘液滴
+  spitRing(g) {
+    const n = [6, 7, 8][this.phase - 1];
+    for (let i = 0; i < n; i++) { const k = i / (n - 1) * 2 - 1; g.projectiles.push(new IncSpit(this.x + k * 30, this.y + 50, k * 340 + rand(-20, 20), rand(-320, -220))); }
+    Sound.sfx.splat(); Sound.sfx.pop(); g.shake(5);
+  }
+  // 脐带从一侧垂下，贴着地面横扫到另一侧
+  sweep(g) {
+    const dir = g.player.cx < this.x ? 1 : -1; // 从离你远的一侧扫过来
+    this.hz.push({ kind: 'sweep', dir, x: dir > 0 ? INC.X - 460 : INC.X + 460, t: 0, tele: [1.1, 1.1, 0.9][this.phase - 1], sp: [0, 640, 760][this.phase - 1] });
+    Sound.sfx.growl();
+  }
+  sweepRect(h) { return { x: h.x - 16, y: INC.FLOOR - 40, w: 32, h: 40 }; }
+  updHazards(dt, g) {
+    for (const h of this.hz) {
+      h.t += dt;
+      if (h.t < h.tele) continue;
+      if (!h.fired) { h.fired = true; Sound.sfx.saw(); g.shake(4); }
+      h.x += h.dir * h.sp * dt;
+      if (Math.random() < 0.6) g.particles.add({ x: h.x, y: INC.FLOOR - 3, vx: -h.dir * rand(40, 160), vy: rand(-160, -40), life: 0.3, size: 2, color: pick(['#c86ab0', '#fbd']), grav: 700 });
+      if (g.state === 'play' && overlap(g.player.hurt(), this.sweepRect(h))) g.killPlayer('boss');
+      if (h.dir > 0 ? h.x > INC.X + 470 : h.x < INC.X - 470) h.dead = true;
+    }
+    this.hz = this.hz.filter((h) => !h.dead);
+  }
+  // 刷怪 / 开阀期间的压制
+  harass(dt, g) {
+    if (g.state !== 'play') return;
+    const ph = this.phase;
+    if (ph >= 2) {
+      this.spitT -= dt;
+      if (this.spitT <= 0) { this.spitT = ph >= 3 ? 3.0 : 4.0; this.spitAt(g, ph >= 3 ? 3 : 2); }
+      this.sweepT -= dt;
+      if (this.sweepT <= 0 && !this.hz.length) { this.sweepT = ph >= 3 ? 4.5 : 6; this.sweep(g); }
+    }
+  }
+  // 过载阀：碰到或砍到就打开；两个都打开后繁育者过载
+  updValves(dt, g) {
+    const p = g.player;
+    for (const v of this.valves) {
+      v.t += dt;
+      if (v.on || g.state !== 'play') continue;
+      if (overlap(p, this.valveRect(v))) this.openValve(g, v);
+    }
+    if (this.valves.every((v) => v.on)) {
+      this.state = 'overload'; this.t = 0; Sound.sfx.electric(); g.shake(8);
+      if (this.firstExpose) { this.firstExpose = false; g.say(RADIO.incExpose); }
+    }
+  }
+  openValve(g, v) {
+    v.on = true; v.t = 0; Sound.sfx.gateOpen(); Sound.sfx.electric(); g.shake(4);
+    g.particles.burst(v.x, INC.VALVE_Y - 16, 16, { color: ['#7ff', '#fff', '#c86ab0'], shape: 'spark', smin: 80, smax: 260, lmin: 0.2, lmax: 0.5, add: true });
+    g.bolts.push({ x1: v.x, y1: INC.VALVE_Y - 20, x2: this.x, y2: this.y, t: 0, life: 0.4, w: 3 });
+  }
   update(dt, g) {
     this.t += dt; this.flash = Math.max(0, this.flash - dt); this.hitCd -= dt;
     const beatRate = this.state === 'exposed' ? 3.2 : 1.4 + this.phase * 0.3;
     this.beat += dt * beatRate;
     if (Math.floor(this.beat) !== Math.floor(this.beat - dt * beatRate) && this.active && this.state !== 'intro') Sound.sfx.throb();
+    this.updHazards(dt, g);
     switch (this.state) {
       case 'intro':
         this.y = lerp(this.y, INC.Y_HIGH, Math.min(1, dt * 2));
@@ -560,24 +637,32 @@ class Incubator {
         break;
       case 'rest': this.open = approach(this.open, 0, dt * 2); if (this.t > 1.2) this.startWave(g); break;
       case 'spawning':
+        this.harass(dt, g);
         this.spawnT -= dt;
-        if (this.spawnT <= 0 && this.queue.length) { this.spawnOne(g); this.spawnT = 0.55; }
+        if (this.spawnT <= 0 && this.queue.length) { this.spawnOne(g); this.spawnT = [0.45, 0.4, 0.35][this.phase - 1]; }
         if (!this.queue.length) { this.state = 'waiting'; this.t = 0; }
         break;
       case 'waiting':
+        this.harass(dt, g);
         if (this.mobs.every((e) => !e.alive)) {
-          this.state = 'overload'; this.t = 0; Sound.sfx.electric(); g.shake(8);
-          if (this.firstExpose) { this.firstExpose = false; g.say(RADIO.incExpose); }
+          this.state = 'valves'; this.t = 0; Sound.sfx.recharge();
+          for (const v of this.valves) { v.on = false; v.t = 0; }
+          if (this.firstValve) { this.firstValve = false; g.say(RADIO.incValve); }
         }
+        break;
+      case 'valves':
+        this.harass(dt, g);
+        this.updValves(dt, g);
         break;
       case 'overload':
         this.y = lerp(INC.Y_HIGH, INC.Y_LOW, Math.min(1, this.t / 1.0));
         if (Math.random() < 0.5) g.particles.add({ x: this.x + rand(-60, 60), y: this.y + rand(-50, 50), vx: rand(-80, 80), vy: rand(-80, 80), life: 0.3, size: 2, color: '#8ff', shape: 'spark', add: true });
-        if (this.t > 1.0) { this.state = 'exposed'; this.t = 0; Sound.sfx.recharge(); }
+        if (this.t > 1.0) { this.state = 'exposed'; this.t = 0; this.floorHp = [40, 20, 0][this.phase - 1]; this.pulseT = 0; Sound.sfx.recharge(); }
         break;
       case 'exposed':
         this.open = approach(this.open, 1, dt * 4);
-        if (this.t > 5) { this.state = 'rise'; this.t = 0; }
+        if (this.phase >= 3) this.updPulse(dt, g);
+        if (this.t > 5) this.closeUp(g);
         break;
       case 'rise':
         this.open = approach(this.open, 0, dt * 3);
@@ -595,13 +680,36 @@ class Incubator {
         }
         break;
     }
-    if (this.phase > this.phaseSeen && this.active) { this.phaseSeen = this.phase; g.say(this.phase === 2 ? RADIO.incPhase2 : RADIO.incPhase3); }
+    if (this.phase > this.phaseSeen && this.active) { this.phaseSeen = this.phase; this.sweepT = 2; this.spitT = 1.5; g.say(this.phase === 2 ? RADIO.incPhase2 : RADIO.incPhase3); }
+  }
+  // 暴露结束（时间到 / 外壳被击穿）：合上外壳、喷一圈粘液、升回高处
+  closeUp(g) {
+    this.state = 'rise'; this.t = 0; this.pulseT = 0;
+    if (g.state === 'play') this.spitRing(g);
+  }
+  // 三阶段：核心周期放电。前 0.55 秒闪白预警，随后 0.25 秒内靠近核心即被击毁
+  updPulse(dt, g) {
+    if (this.t < 0.8) return;
+    const T = 1.6, prev = this.pulseT; this.pulseT = (this.pulseT + dt) % T;
+    if (prev < 0.55 && this.pulseT >= 0.55) {
+      Sound.sfx.zap(); Sound.sfx.electric(); g.shake(6);
+      g.particles.add({ x: this.x, y: this.y + 18, size: 8, grow: INC.PULSE_R * 5, life: 0.25, shape: 'ring', color: '#bff', add: true });
+      for (let i = 0; i < 5; i++) { const a = rand(0, Math.PI * 2); g.bolts.push({ x1: this.x, y1: this.y + 18, x2: this.x + Math.cos(a) * INC.PULSE_R, y2: this.y + 18 + Math.sin(a) * INC.PULSE_R, t: 0, life: 0.25, w: 2 }); }
+    }
+    if (this.pulseT >= 0.55 && this.pulseT < 0.8 && g.state === 'play' && Math.hypot(g.player.cx - this.x, g.player.cy - (this.y + 18)) < INC.PULSE_R) g.killPlayer('shock');
   }
   hurt(n, g) {
     if (this.state !== 'exposed' || this.hitCd > 0) return false;
-    this.hitCd = 0.1; this.hp = Math.max(0, this.hp - n); this.flash = 0.12; Sound.sfx.hit(); g.freeze(0.03);
+    this.hitCd = 0.1; this.hp = Math.max(this.floorHp, this.hp - n); this.flash = 0.12; Sound.sfx.hit(); g.freeze(0.03);
     g.particles.burst(this.x, this.y + 18, 10, { color: ['#f5a', '#fff', '#7ff'], shape: 'spark', smin: 100, smax: 300, lmin: 0.15, lmax: 0.35, add: true });
-    if (this.hp <= 0) { this.state = 'dying'; this.t = 0; for (const e of this.mobs) if (e.alive) g.killEnemy(e); Sound.sfx.roar(); }
+    if (this.hp <= 0) { this.state = 'dying'; this.t = 0; this.hz = []; for (const e of this.mobs) if (e.alive) g.killEnemy(e); Sound.sfx.roar(); }
+    else if (this.hp <= this.floorHp) {
+      // 一层外壳被击穿：核心立刻缩回去
+      Sound.sfx.shatter(); Sound.sfx.roar(); g.shake(14); g.flash(0.5, '#fbd'); g.freeze(0.1);
+      g.particles.burst(this.x, this.y + 18, 36, { color: ['#3a4a55', '#6fd8ff', '#c86ab0'], shape: 'shard', smin: 120, smax: 420, grav: 900, lmin: 0.5, lmax: 1.1, szmin: 3, szmax: 7 });
+      if (this.firstShell) { this.firstShell = false; g.say(RADIO.incShell); }
+      this.closeUp(g);
+    }
     return true;
   }
   touchPlayer(g) {
@@ -610,11 +718,47 @@ class Incubator {
     if (overlap(p, c) && p.vy > 0 && p.prevBottom <= c.y + 16) { if (this.hurt(3, g)) g.stompBounce(1.05); }
   }
   slashed(g, ab) {
+    if (this.state === 'valves') for (const v of this.valves) if (!v.on && overlap(ab, this.valveRect(v))) this.openValve(g, v);
     if (this.state !== 'exposed') { if (overlap(ab, this.body())) { g.player.atkHits.add(this); Sound.sfx.block(); } return; }
     if (overlap(ab, this.core())) { g.player.atkHits.add(this); this.hurt(1, g); if (g.player.atkDown) g.stompBounce(0.9); }
   }
+  // 地面上的脐带横扫 / 过载阀（画在繁育者后面）
+  drawBack(ctx, g) {
+    const t = g.t;
+    for (const v of this.valves) {
+      const R = this.valveRect(v), cx = v.x, need = this.state === 'valves' && !v.on;
+      ctx.fillStyle = '#1b2831'; ctx.fillRect(R.x, R.y + 8, R.w, R.h - 8);
+      ctx.fillStyle = '#2b4656'; ctx.fillRect(R.x + 2, R.y + 10, R.w - 4, 4);
+      // 阀门手轮（打开后转到竖直）
+      ctx.save(); ctx.translate(cx, R.y + 6); ctx.rotate(v.on ? Math.PI / 2 : need ? Math.sin(t * 6) * 0.15 : 0);
+      ctx.strokeStyle = v.on ? '#7ff' : '#c86ab0'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-10, 0); ctx.lineTo(10, 0); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, 0, 5, 0, 7); ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = v.on ? '#5f8' : need && (t * 6) % 2 < 1 ? '#f5a' : '#511'; ctx.fillRect(cx - 3, R.y + 18, 6, 3);
+      if (need) {
+        ctx.fillStyle = `rgba(255,120,200,${0.6 + 0.4 * Math.sin(t * 8)})`; ctx.font = 'bold 12px ' + FONT; ctx.textAlign = 'center';
+        ctx.fillText('▼', cx, R.y - 8 - Math.abs(Math.sin(t * 4)) * 6); ctx.textAlign = 'left';
+      }
+      if (v.on && this.state === 'valves') { ctx.strokeStyle = `rgba(120,240,255,${0.4 + 0.3 * Math.sin(t * 20)})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cx, R.y); ctx.quadraticCurveTo((cx + this.x) / 2, R.y - 80, this.x, this.y + 40); ctx.stroke(); }
+    }
+    for (const h of this.hz) {
+      const warn = h.t < h.tele, x = h.x;
+      if (warn) { // 地面发红预警 + 脐带在场边抽动
+        const a = (g.t * 10) % 2 < 1 ? 0.35 : 0.15;
+        ctx.fillStyle = `rgba(255,60,140,${a})`; ctx.fillRect(INC.X - 448, INC.FLOOR - 40, 896, 40);
+      }
+      ctx.lineCap = 'round'; ctx.strokeStyle = '#3a1a30'; ctx.lineWidth = 12;
+      const tipY = warn ? INC.FLOOR - 60 + Math.sin(g.t * 20) * 8 : INC.FLOOR - 18, midX = x - h.dir * (warn ? 20 : 60);
+      ctx.beginPath(); ctx.moveTo(x - h.dir * 30, INC.CEIL); ctx.quadraticCurveTo(midX, (INC.CEIL + tipY) / 2, x, tipY); ctx.stroke();
+      ctx.strokeStyle = '#c86ab0'; ctx.lineWidth = 4; ctx.stroke();
+      ctx.lineCap = 'butt';
+      ctx.fillStyle = '#7a3a6a'; ctx.beginPath(); ctx.ellipse(x, tipY, 16, 20, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#f5a'; ctx.fillRect(x - 10, tipY - 2, 20, 4);
+    }
+  }
   draw(ctx, g) {
     if (this.state === 'dead') return;
+    this.drawBack(ctx, g);
     const x = this.x, y = this.y, t = g.t, beat = 1 + Math.max(0, Math.sin(this.beat * Math.PI * 2)) * 0.06;
     // 输卵管般的电缆
     ctx.lineCap = 'round';
@@ -673,6 +817,14 @@ class Incubator {
       const a = 0.6 + 0.4 * Math.sin(t * 10);
       ctx.fillStyle = `rgba(255,120,200,${a})`; ctx.font = 'bold 13px ' + FONT; ctx.textAlign = 'center';
       ctx.fillText('▼ 核心暴露 · 攻击！', x, y - 90); ctx.textAlign = 'left';
+      // 三阶段：放电范围 + 预警（核心闪白）
+      if (this.phase >= 3 && this.t >= 0.8) {
+        const warn = this.pulseT < 0.55, hot = !warn && this.pulseT < 0.8;
+        ctx.strokeStyle = hot ? 'rgba(200,255,255,0.9)' : warn && this.pulseT > 0.2 && (t * 16) % 2 < 1 ? 'rgba(255,255,255,0.7)' : 'rgba(120,230,255,0.2)';
+        ctx.lineWidth = hot ? 3 : 2; ctx.setLineDash(hot ? [] : [4, 6]);
+        ctx.beginPath(); ctx.arc(x, y + 18, INC.PULSE_R, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+        if (warn && this.pulseT > 0.2) { ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = `rgba(220,255,255,${0.3 + 0.5 * Math.random()})`; ctx.beginPath(); ctx.arc(x, y + 18, 20, 0, 7); ctx.fill(); ctx.globalCompositeOperation = 'source-over'; }
+      }
     }
   }
 }
@@ -690,13 +842,15 @@ Object.assign(RADIO, {
     ['SYS', '[新武器] {attack} 喷出三颗孢子 · 落地留下孢子云 · 无视盾牌 · {swap} 切换武器'],
   ],
   incIntro: [
-    ['EVA', '这就是育婴室的母体子系统……「繁育者」。它本身没有武器。'],
-    ['EVA', '但它会把整个博物馆和育婴室里的守卫都孵化出来。清空每一波，它就会过载、降下来。'],
-    ['SYS', '[提示] 清空一波小怪 → 繁育者降下并打开外壳 5 秒 → 攻击或踩踏发光的核心'],
+    ['EVA', '这就是育婴室的母体子系统……「繁育者」。小心它吐出来的粘液。'],
+    ['EVA', '它会把整个博物馆和育婴室里的守卫都孵化出来。清空每一波，再打开两侧平台上的过载阀，它就会过载、降下来。'],
+    ['SYS', '[提示] 清空一波小怪 → 打开两侧平台上的过载阀（碰到或攻击）→ 繁育者降下并打开外壳 5 秒 → 攻击或踩踏发光的核心 · 每次最多击穿一层外壳'],
   ],
+  incValve: [['EVA', '它在给核心加压——两侧平台上的过载阀！把它们都打开！']],
   incExpose: [['EVA', '就是现在！它过载了——砍它的核心！']],
-  incPhase2: [['EVA', '孵化速度在加快……它在学习你的打法。']],
-  incPhase3: [['EVA', '它快撑不住了。再坚持一下，拉撒路！']],
+  incShell: [['EVA', '击穿了一层外壳！它把核心缩回去了——还剩下面几层。']],
+  incPhase2: [['EVA', '孵化速度在加快……天花板上的脐带也开始动了。地面发红就跳起来，或者站到平台上！']],
+  incPhase3: [['EVA', '它快撑不住了——核心开始放电！核心一闪白光，就马上退开！']],
   incDefeat: [
     ['EVA', '……繁育者停止了跳动。'],
     ['EVA', '你知道吗，拉撒路？那些培养舱里的东西……它们都在模仿你。你的每一次跳跃、每一次死亡。'],

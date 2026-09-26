@@ -96,7 +96,12 @@ class Checkpoint {
     ctx.fillStyle = '#12181a'; ctx.fillRect(x + 5, y + 11, 18, 13);
     if (this.active) {
       ctx.fillStyle = '#5f8'; ctx.fillRect(x + 7, y + 13, 14 * Math.min(1, this.t * 2), 2);
-      ctx.fillStyle = 'rgba(80,255,140,0.7)'; ctx.font = '7px ' + MONO; ctx.fillText('SAVED', x + 6, y + 22);
+      // 「SAVED」：按屏幕宽度（18px，两侧各留 1px）缩放后居中，并裁剪在屏幕里，不会出界
+      ctx.save(); ctx.beginPath(); ctx.rect(x + 5, y + 11, 18, 13); ctx.clip();
+      ctx.fillStyle = 'rgba(80,255,140,0.8)'; ctx.font = 'bold 7px ' + MONO; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const sc = Math.min(1, 16 / ctx.measureText('SAVED').width);
+      ctx.translate(x + 14, y + 19.5); ctx.scale(sc, sc); ctx.fillText('SAVED', 0, 0);
+      ctx.restore();
       ctx.globalCompositeOperation = 'lighter';
       const gr = ctx.createRadialGradient(x + 14, y + 17, 2, x + 14, y + 17, 34);
       gr.addColorStop(0, 'rgba(80,255,140,0.35)'); gr.addColorStop(1, 'rgba(80,255,140,0)');
@@ -615,20 +620,31 @@ class AbilityPickup {
   constructor(x, groundY, key) { this.key = key; this.x = x - 14; this.y = groundY - 56; this.w = 28; this.h = 56; this.t = 0; this.got = false; }
   update(dt, g) {
     this.t += dt;
-    const c = PICKUP_INFO[this.key].color;
+    const c = this.info().color;
     if (!this.got && Math.random() < 0.3) g.particles.add({ x: this.x + 14 + rand(-10, 10), y: this.y + 50, vx: rand(-10, 10), vy: rand(-80, -30), life: 0.8, size: 2, color: `rgb(${c})`, add: true });
     if (!this.got && this.t > 0.5 && g.state === 'play' && overlap(g.player, this)) { this.got = true; g.pickupAbility(this.key); }
   }
+  // 其他角色在这里拿到的是自己的专属模块
+  modDef() { return typeof MODULES !== 'undefined' && Game.charId !== 'lazarus' && MODULES[Game.charId] ? modDef(Game.charId, this.key) : null; }
+  info() { const d = this.modDef(); return d ? { label: d.name, color: d.color } : PICKUP_INFO[this.key]; }
   draw(ctx, g) {
     if (this.got) return;
-    const x = this.x + 14, y = this.y + 56, c = PICKUP_INFO[this.key].color;
+    const x = this.x + 14, y = this.y + 56, M = this.modDef(), c = this.info().color;
     ctx.globalCompositeOperation = 'lighter';
     const gr = ctx.createRadialGradient(x, y - 26, 2, x, y - 26, 60 + Math.sin(g.t * 3) * 6);
     gr.addColorStop(0, `rgba(${c},0.45)`); gr.addColorStop(1, `rgba(${c},0)`);
     ctx.fillStyle = gr; ctx.fillRect(x - 70, y - 96, 140, 140);
     ctx.fillStyle = `rgba(${c},0.07)`; ctx.fillRect(x - 10, y - 400, 20, 400);
     ctx.globalCompositeOperation = 'source-over';
-    if (this.key === 'relicBlade') {
+    if (M) { // 专属模块：悬浮的六边形芯片
+      const bob = Math.sin(g.t * 2.5) * 3;
+      ctx.fillStyle = '#3a3a40'; ctx.fillRect(x - 14, y - 8, 28, 8);
+      ctx.save(); ctx.translate(x, y - 34 + bob); ctx.rotate(g.t * 0.8);
+      ctx.fillStyle = '#2a2a30'; ctx.beginPath(); for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; ctx.lineTo(Math.cos(a) * 13, Math.sin(a) * 13); } ctx.fill();
+      ctx.strokeStyle = `rgb(${c})`; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = `rgb(${c})`; ctx.fillRect(-4, -4, 8, 8);
+      ctx.restore();
+    } else if (this.key === 'relicBlade') {
       ctx.fillStyle = '#9aa0a4'; ctx.beginPath(); ctx.moveTo(x - 3, y - 36); ctx.lineTo(x + 3, y - 36); ctx.lineTo(x + 2, y - 2); ctx.lineTo(x, y + 4); ctx.lineTo(x - 2, y - 2); ctx.fill();
       ctx.fillStyle = '#dfe4e8'; ctx.fillRect(x - 1, y - 34, 1, 30);
       ctx.fillStyle = '#8a6a36'; ctx.fillRect(x - 10, y - 40, 20, 4); ctx.fillStyle = '#4a3218'; ctx.fillRect(x - 2, y - 52, 4, 12);
@@ -655,6 +671,6 @@ class AbilityPickup {
       }
     }
     ctx.fillStyle = `rgba(${c},${0.6 + 0.4 * Math.sin(g.t * 4)})`; ctx.font = 'bold 11px ' + FONT; ctx.textAlign = 'center';
-    ctx.fillText('▼ ' + PICKUP_INFO[this.key].label, x, y - 70 - Math.sin(g.t * 3) * 3); ctx.textAlign = 'left';
+    ctx.fillText('▼ ' + tr(this.info().label), x, y - 70 - Math.sin(g.t * 3) * 3); ctx.textAlign = 'left';
   }
 }

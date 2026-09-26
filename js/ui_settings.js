@@ -99,7 +99,7 @@ Object.assign(Game, {
     if (R.act === 'keys') this.openKeys('settings');
     else if (R.act === 'audio') this.openAudio('settings');
     else if (R.act === 'display') this.openDisplay('settings');
-    else if (R.act === 'lang') { Sound.sfx.select(); I18N.set(I18N.en ? 'zh' : 'en'); }
+    else if (R.act === 'lang') { Sound.sfx.select(); I18N.set(I18N.en ? 'zh' : 'en'); this.relangRadio(); }
     else { Sound.sfx.select(); this.closeSettings(); }
   },
   updateSettings() {

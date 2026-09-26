@@ -6,7 +6,11 @@ Object.assign(Game, {
   openInventory(from) {
     this.invFrom = from; this.state = 'inv'; this.invTab = this.invTab || 0; this.invSel = 0; Sound.sfx.select();
   },
-  invItems() { const slot = SLOTS[this.invTab].key; return ITEMDEFS.filter((d) => d.slot === slot); },
+  invItems() {
+    const slot = SLOTS[this.invTab].key, ch = MODULES[this.charId] ? this.charId : 'lazarus';
+    // 「能力 · 武器」页：拉撒路看自己的武器 / 能力；其他角色看自己的专属模块
+    return ITEMDEFS.filter((d) => d.slot === slot && (slot !== 'ability' || (ch === 'lazarus' ? !d.mod : d.char === ch)));
+  },
   closeInventory() {
     Inventory.preview = null;
     if (this.invFrom === 'title') this.toTitle();
@@ -123,6 +127,13 @@ Object.assign(Game, {
         ctx.strokeStyle = d.color; ctx.strokeRect(dx + 53, 188, 200, 10);
         ctx.fillRect(dx + 55, 190, 196 * ((this.t * 0.7) % 1), 6);
         ctx.textAlign = 'left';
+      } else if (d.slot === 'ability' && d.mod) { // 专属模块：六边形芯片
+        const cx = dx + dw / 2, cy = 160;
+        ctx.save(); ctx.translate(cx, cy); ctx.rotate(this.t * 0.4);
+        ctx.fillStyle = '#2a2a30'; ctx.beginPath(); for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; ctx.lineTo(Math.cos(a) * 46, Math.sin(a) * 46); } ctx.fill();
+        ctx.strokeStyle = own ? `rgb(${d.color})` : '#555'; ctx.lineWidth = 4; ctx.stroke();
+        ctx.fillStyle = own ? `rgb(${d.color})` : '#444'; ctx.fillRect(-12, -12, 24, 24);
+        ctx.restore();
       } else if (d.slot === 'ability') {
         if (!ItemArt.draw(ctx, d.key, dx + dw / 2, 160, this.t, own)) {
           ctx.textAlign = 'center'; ctx.fillStyle = own ? '#fc6' : '#666'; ctx.font = 'bold 60px ' + FONT;
