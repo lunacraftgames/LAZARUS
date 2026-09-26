@@ -3,7 +3,7 @@
 //  LAZARUS · 核心工具 / 物理世界 / 粒子
 // ============================================================
 const TILE = 32, VW = 960, VH = 540;
-const BUILD = '20260926-33'; // 版本号，显示在标题界面右下角；与 index.html 里脚本的 ?v= 保持一致
+const BUILD = '20260926-34'; // 版本号，显示在标题界面右下角；与 index.html 里脚本的 ?v= 保持一致
 // 桌面版（Electron，见 desktop/）由 preload 注入 window.LAZARUS_DESKTOP；网页版没有
 const DESKTOP = (typeof window !== 'undefined' && window.LAZARUS_DESKTOP) || null;
 // 测试功能（标题画面数字键直接跳关）：网页版保留；桌面版关闭，只有未打包时 npm run debug 才打开
