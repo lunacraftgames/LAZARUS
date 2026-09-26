@@ -495,7 +495,7 @@ const Game = {
     Save.save({ level: 0, deaths: 0, chips: [], time: 0 }); Save.clear(); this.toTitle();
   },
   updatePause() {
-    const opts = 9; // 与 drawPause 里的菜单项数一致
+    const opts = 10; // 与 drawPause 里的菜单项数一致
     if (Input.hit('mu')) { this.pauseSel = (this.pauseSel + opts - 1) % opts; Sound.sfx.select(); }
     if (Input.hit('md')) { this.pauseSel = (this.pauseSel + 1) % opts; Sound.sfx.select(); }
     if (Input.hit('pause') || Input.hit('back')) { this.state = 'play'; return; }
@@ -511,7 +511,8 @@ const Game = {
       else if (this.pauseSel === 4) this.openDisplay('paused');
       else if (this.pauseSel === 5) Input.setRumble(!Input.rumbleOn);
       else if (this.pauseSel === 6) { I18N.set(I18N.en ? 'zh' : 'en'); this.relangRadio(); } // 切换语言（和标题界面「设置」里的同一个开关）
-      else if (this.pauseSel === 7) this.startLevel(this.levelIndex, true);
+      else if (this.pauseSel === 7) { this.state = 'play'; this.killPlayer(); } // 自毁重构（同 R 键；手柄没有这个按键，从这里用）
+      else if (this.pauseSel === 8) this.startLevel(this.levelIndex, true);
       else { if (this.boss) this.boss.stopSounds(); this.toTitle(); }
     }
   },
@@ -989,12 +990,12 @@ const Game = {
   drawPause(ctx) {
     ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0, 0, VW, VH);
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#f2ead6'; ctx.font = 'bold 32px ' + FONT; ctx.fillText('暂 停', VW / 2, VH / 2 - 110);
+    ctx.fillStyle = '#f2ead6'; ctx.font = 'bold 32px ' + FONT; ctx.fillText('暂 停', VW / 2, VH / 2 - 124);
     const lang = I18N.en ? 'Language / 语言: English' : '语言 / Language：简体中文'; // 语言名称不翻译，两种语言都认得出
-    ['继续游戏', '仓库 · 武器与外观', '按键设置', '声音设置', '显示设置', tr('手柄震动：%{v}', { v: tr(Input.rumbleOn ? '开' : '关') }), lang, '重新开始本关', '返回标题'].forEach((s, i) => {
+    ['继续游戏', '仓库 · 武器与外观', '按键设置', '声音设置', '显示设置', tr('手柄震动：%{v}', { v: tr(Input.rumbleOn ? '开' : '关') }), lang, '自毁重构', '重新开始本关', '返回标题'].forEach((s, i) => {
       ctx.fillStyle = i === this.pauseSel ? '#7ff' : '#888'; ctx.font = (i === this.pauseSel ? 'bold ' : '') + '18px ' + FONT;
-      ctx.fillText((i === this.pauseSel ? '▶ ' : '') + s, VW / 2, VH / 2 - 84 + i * 28);
-      this.addHot(VW / 2 - 170, VH / 2 - 105 + i * 28, 340, 28, () => this.activatePause(), () => { this.pauseSel = i; });
+      ctx.fillText((i === this.pauseSel ? '▶ ' : '') + s, VW / 2, VH / 2 - 90 + i * 26);
+      this.addHot(VW / 2 - 170, VH / 2 - 109 + i * 26, 340, 26, () => this.activatePause(), () => { this.pauseSel = i; });
     });
     ctx.fillStyle = 'rgba(200,200,200,0.55)'; ctx.font = '12px ' + FONT;
     const hp = [{ k: 'move' }, '移动', { k: 'jump' }, '跳跃', { k: 'dash' }, '冲刺'];
