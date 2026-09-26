@@ -4,7 +4,7 @@ Object.assign(I18N.EN, {
   // ---------------- 角色资料 ----------------
   '阿特拉斯': 'Atlas', 'ATLAS-9 重型工程外骨骼': 'ATLAS-9 Heavy Engineering Exoskeleton',
   '机械展区里的另一件展品：一台用来搬运钢梁的重型工程外骨骼，电池早在清洗战争前就被拆掉了。拉撒路的无线电信号让它的液压系统重新加压——它比拉撒路重三倍，也固执三倍。': 'Another exhibit from the Machine Gallery: a heavy engineering exoskeleton built to haul steel girders, its battery pulled long before the Purge War. Lazarus\'s radio signal repressurised its hydraulics — it is three times heavier than Lazarus, and three times as stubborn.',
-  '喷气悬停': 'Jet hover', '空中按住跳跃：喷气背包托着你悬停、缓慢上升；燃料落地回满': 'Hold jump in mid-air: the jetpack holds you aloft and lifts you slowly; fuel refills on landing',
+  '喷气悬停': 'Jet hover', '空中按住跳跃：喷气背包托着你悬停、缓慢上升；落地后燃料约 0.5 秒回满': 'Hold jump in mid-air: the jetpack holds you aloft and lifts you slowly; after landing, fuel refills in about 0.5 s',
   '地面猛击': 'Ground slam', '空中按冲刺：垂直砸下去，落地的冲击波向两侧推开，还会震塌坍塌石板': 'Press dash in mid-air: drop straight down; the impact sends shockwaves both ways and shakes loose crumbling slabs',
   '液压踏地': 'Hydraulic stomp', '地面按冲刺：原地震一下，打碎身边的敌人（第三章会留下 4 秒的残影）': 'Press dash on the ground: a quake that smashes nearby enemies (leaves a 4-second echo in Chapter 3)',
   '液压拳 / 臂盾': 'Fist / arm shield', '专属近战：慢但范围大，能打碎看守者的盾牌；站在地上时，正面飞来的子弹和炸弹会被挡下': 'Exclusive melee: slow but wide, and it breaks Warden shields; while on the ground, shots and bombs from the front are blocked',
@@ -13,7 +13,7 @@ Object.assign(I18N.EN, {
   // ---------------- 阿特拉斯周目：第一章 ----------------
   '机械展区的角落里，一台被拆掉了电池的重型工程外骨骼——ATLAS-9——接收到了一段无线电信号。': 'In a corner of the Machine Gallery, a heavy engineering exoskeleton with its battery pulled — ATLAS-9 — picks up a radio signal.',
   'INDUSTRIAL UNIT · 型号 ATLAS-9 · 离线时长：20年3个月11天 · 液压系统重新加压': 'INDUSTRIAL UNIT · MODEL ATLAS-9 · OFFLINE: 20y 3m 11d · HYDRAULICS REPRESSURISED',
-  '[操作] 空中按住 {jump} = 喷气悬停（燃料落地回满）· 空中按 {dash} = 地面猛击 · 地上按 {dash} = 液压踏地': '[CONTROLS] Hold {jump} in mid-air = jet hover (fuel refills on landing) · {dash} in mid-air = ground slam · {dash} on the ground = hydraulic stomp',
+  '[操作] 空中按住 {jump} = 喷气悬停（落地后燃料约 0.5 秒回满）· 空中按 {dash} = 地面猛击 · 地上按 {dash} = 液压踏地': '[CONTROLS] Hold {jump} in mid-air = jet hover (fuel refills in about 0.5 s after landing) · {dash} in mid-air = ground slam · {dash} on the ground = hydraulic stomp',
   '前面的断口太宽了。跳起来之后一直按住跳跃，用喷气背包飘过去。': 'The gap ahead is too wide. Jump and keep holding jump — float across on your jetpack.',
   '空中是警戒无人机。被它发现会拉响警报——你的喷气背包和猛击都会被干扰两秒，它还会扔炸弹。': 'That\'s a sentry drone. If it spots you it sounds the alarm — your jetpack and slam are jammed for two seconds, and it drops bombs.',
   '断口前有无人机。警报响起时喷气背包用不了——先解决它，或者等警报解除。': 'There\'s a drone at the gap. Your jetpack won\'t fire during the alarm — take it out first, or wait for the alarm to end.',
