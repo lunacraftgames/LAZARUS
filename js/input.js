@@ -82,8 +82,7 @@ const Input = {
   binds: null, capture: null, padHoldLock: false, map: {},
   // ---------- 键位存取 ----------
   loadBinds() {
-    let b = null;
-    try { b = JSON.parse(localStorage.getItem('lazarus_binds') || 'null'); } catch (e) { /* ignore */ }
+    const b = Store.getJSON('lazarus_binds');
     const keys = JSON.parse(JSON.stringify(DEFAULT_KEYS)), pad = JSON.parse(JSON.stringify(DEFAULT_PAD));
     if (b && b.keys) for (const a in keys) if (Array.isArray(b.keys[a])) keys[a] = [0, 1, 2].map((i) => b.keys[a][i] || null);
     if (b && b.pad) for (const a of PAD_REBINDABLE) if (Array.isArray(b.pad[a]) && b.pad[a].length) pad[a] = b.pad[a].slice();
@@ -95,8 +94,8 @@ const Input = {
     this.binds = { v: 2, keys, pad, upJump: b && b.v >= 2 && typeof b.upJump === 'boolean' ? b.upJump : false };
     this.rebuild();
   },
-  saveBinds() { try { localStorage.setItem('lazarus_binds', JSON.stringify(this.binds)); } catch (e) { /* ignore */ } this.rebuild(); },
-  resetBinds() { try { localStorage.removeItem('lazarus_binds'); } catch (e) { /* ignore */ } this.loadBinds(); },
+  saveBinds() { Store.setJSON('lazarus_binds', this.binds); this.rebuild(); },
+  resetBinds() { Store.remove('lazarus_binds'); this.loadBinds(); },
   rebuild() {
     const k = this.binds.keys, arrows = { mu: 'ArrowUp', md: 'ArrowDown', ml: 'ArrowLeft', mr: 'ArrowRight' };
     this.map = {
@@ -135,7 +134,11 @@ const Input = {
     this.loadBinds();
     const block = ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab', 'Backspace'];
     addEventListener('keydown', (e) => {
-      if (block.includes(e.code) || (e.altKey && /^Digit\d$/.test(e.code))) e.preventDefault(); // Alt + 数字：标题界面跳第三章（测试用）
+      // F11 / Alt + Enter：切换全屏（不参与游戏输入，Alt + Enter 不会同时触发「确认」）
+      if (e.code === 'F11' || (e.altKey && (e.code === 'Enter' || e.code === 'NumpadEnter'))) {
+        e.preventDefault(); if (!e.repeat && typeof Display !== 'undefined') Display.toggleFull(); return;
+      }
+      if (block.includes(e.code) || (e.altKey && /^Digit\d$/.test(e.code))) e.preventDefault(); // Alt + 数字：标题界面跳第三章（测试用，DEBUG）
       if (this.capture && this.capture.kind === 'key') {
         e.preventDefault(); if (e.repeat) return;
         const c = this.capture;
@@ -156,7 +159,7 @@ const Input = {
       if (e.gamepad.index === this.padIndex) { this.padIndex = -1; if (this.device !== 'kb') this.device = 'kb'; }
       if (this.onPadChange) this.onPadChange(false, padName(e.gamepad.id, padType(e.gamepad.id)));
     });
-    try { this.rumbleOn = localStorage.getItem('lazarus_rumble') !== '0'; } catch (e) { /* ignore */ }
+    this.rumbleOn = Store.get('lazarus_rumble') !== '0';
   },
   setPad(gp) { const t = padType(gp.id); this.padType = t; this.padName = padName(gp.id, t); },
   setVirt(a, v) { this.virt[a] = v; if (v) this.latch[a] = true; },
@@ -271,7 +274,7 @@ const Input = {
       }
     } catch (e) { /* ignore */ }
   },
-  setRumble(on) { this.rumbleOn = on; try { localStorage.setItem('lazarus_rumble', on ? '1' : '0'); } catch (e) { /* ignore */ } if (on) this.rumble(0.4, 0.4, 150); },
+  setRumble(on) { this.rumbleOn = on; Store.set('lazarus_rumble', on ? '1' : '0'); if (on) this.rumble(0.4, 0.4, 150); },
 };
 
 // 在画布上绘制一个按键徽章，返回宽度

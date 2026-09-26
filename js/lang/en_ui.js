@@ -12,6 +12,11 @@ Object.assign(I18N.EN, {
   // ---------------- 标题 / 暂停 ----------------
   '新的游戏': 'New Game', '开始游戏': 'Start Game', '继续游戏': 'Continue', '章节选择': 'Chapter Select', '角色': 'Units',
   '隐藏结局 · 记忆全集': 'Hidden Ending · Total Recall', '仓库 · 武器与外观': 'Armory · Weapons & Cosmetics', '按键设置': 'Controls', '声音设置': 'Audio',
+  '设置': 'Settings', '设置 · Language': 'Settings · 语言', '显示设置': 'Display', '退出游戏': 'Quit Game', '显示模式': 'Display mode', '全屏': 'Fullscreen', '窗口': 'Windowed',
+  '画面清晰度': 'Render quality', '高（最高 4 倍）': 'High (up to 4×)', '标准（最高 2 倍）': 'Standard (up to 2×)',
+  '失去焦点时自动暂停': 'Pause when window loses focus', '切换': 'Toggle',
+  'F11 或 Alt + Enter 可随时切换全屏': 'Press F11 or Alt + Enter to toggle fullscreen at any time',
+  '高清晰度在 4K 屏幕上更锐利，但更吃显卡；卡顿时请改回标准': 'High quality is sharper on 4K screens but heavier on the GPU; switch back to Standard if it stutters',
   'LZ-01 初代军用外骨骼': 'LZ-01 First-Gen Military Exoskeleton', '服役年份 2025 · 已退役': 'In service 2025 · Decommissioned',
   '已连接：': 'Connected: ', '支持 Xbox / PS4 / PS5 / Switch Pro 手柄与触屏（手柄插上后按任意键）': 'Supports Xbox / PS4 / PS5 / Switch Pro controllers and touch (press any button after plugging in)',
   '暂 停': 'PAUSED', '重新开始本关': 'Restart Level', '返回标题': 'Back to Title', '手柄震动：%{v}': 'Rumble: %{v}', '当前设备：': 'Device: ',

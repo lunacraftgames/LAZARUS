@@ -100,12 +100,12 @@ function generatorBundle(gen) {
 }
 
 // ------------------------------------------------------------
-//  存储后端：浏览器本地（localStorage）
+//  存储后端：本地（网页版 localStorage / 桌面版用户目录下的文件，见 core.js 的 Store）
 // ------------------------------------------------------------
 const LocalBackend = {
   name: 'local',
-  load() { try { return JSON.parse(localStorage.getItem('lazarus_profile') || 'null'); } catch (e) { return null; } },
-  save(p) { try { localStorage.setItem('lazarus_profile', JSON.stringify(p)); } catch (e) { /* ignore */ } },
+  load() { return Store.getJSON('lazarus_profile'); },
+  save(p) { Store.setJSON('lazarus_profile', p); },
   // 本地模拟掉落：直接生成
   drop(genId, profile) { return Inventory.rollLocal(genId); },
 };
