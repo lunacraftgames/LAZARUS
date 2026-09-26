@@ -86,7 +86,16 @@ const Game = {
   freeze(t) { this.freezeT = Math.max(this.freezeT, t); },
   flash(a, c) { this.flashA = Math.max(this.flashA, a); this.flashC = c || '#fff'; },
   say(lines) {
-    for (const [who, text] of lines) this.radio.queue.push({ who, text: charText(text), t: 0 }); // 台词按当前角色调整（见 char_lines.js）
+    for (const [who, text] of lines) this.radio.queue.push({ who, text: charText(text), src: text, t: 0 }); // 台词按当前角色调整（见 char_lines.js）；src = 原文，切换语言时重新翻译
+  },
+  // 暂停界面切换语言后：正在播放 / 排队中的无线电台词换成新语言（正在打字的那句按原来的进度比例继续）
+  relangRadio() {
+    const R = this.radio;
+    for (const q of R.queue) if (q.src != null) q.text = charText(q.src);
+    if (R.cur && R.cur.src != null) {
+      const k = R.cur.text.length ? Math.min(1, R.cur.t * this.cps() / R.cur.text.length) : 1;
+      R.cur.text = Input.fmt(charText(R.cur.src)); R.cur.t = k * R.cur.text.length / this.cps();
+    }
   },
   // 打字机速度（字 / 秒）：英文一句话的字符数大约是中文的 2.5 倍，打得更快、停留按字数少算一些
   cps() { return I18N.en ? 62 : 30; },
@@ -478,7 +487,7 @@ const Game = {
     Save.save({ level: 0, deaths: 0, chips: [], time: 0 }); Save.clear(); this.toTitle();
   },
   updatePause() {
-    const opts = 7;
+    const opts = 8;
     if (Input.hit('mu')) { this.pauseSel = (this.pauseSel + opts - 1) % opts; Sound.sfx.select(); }
     if (Input.hit('md')) { this.pauseSel = (this.pauseSel + 1) % opts; Sound.sfx.select(); }
     if (Input.hit('pause') || Input.hit('back')) { this.state = 'play'; return; }
@@ -492,7 +501,8 @@ const Game = {
       else if (this.pauseSel === 2) this.openKeys('paused');
       else if (this.pauseSel === 3) this.openAudio('paused');
       else if (this.pauseSel === 4) Input.setRumble(!Input.rumbleOn);
-      else if (this.pauseSel === 5) this.startLevel(this.levelIndex, true);
+      else if (this.pauseSel === 5) { I18N.set(I18N.en ? 'zh' : 'en'); this.relangRadio(); } // 切换语言（和标题界面的同一个开关）
+      else if (this.pauseSel === 6) this.startLevel(this.levelIndex, true);
       else { if (this.boss) this.boss.stopSounds(); this.toTitle(); }
     }
   },
@@ -962,10 +972,11 @@ const Game = {
     ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0, 0, VW, VH);
     ctx.textAlign = 'center';
     ctx.fillStyle = '#f2ead6'; ctx.font = 'bold 32px ' + FONT; ctx.fillText('暂 停', VW / 2, VH / 2 - 110);
-    ['继续游戏', '仓库 · 武器与外观', '按键设置', '声音设置', tr('手柄震动：%{v}', { v: tr(Input.rumbleOn ? '开' : '关') }), '重新开始本关', '返回标题'].forEach((s, i) => {
+    const lang = I18N.en ? 'Language / 语言: English' : '语言 / Language：简体中文'; // 语言名称不翻译，两种语言都认得出
+    ['继续游戏', '仓库 · 武器与外观', '按键设置', '声音设置', tr('手柄震动：%{v}', { v: tr(Input.rumbleOn ? '开' : '关') }), lang, '重新开始本关', '返回标题'].forEach((s, i) => {
       ctx.fillStyle = i === this.pauseSel ? '#7ff' : '#888'; ctx.font = (i === this.pauseSel ? 'bold ' : '') + '18px ' + FONT;
-      ctx.fillText((i === this.pauseSel ? '▶ ' : '') + s, VW / 2, VH / 2 - 50 + i * 34);
-      this.addHot(VW / 2 - 170, VH / 2 - 74 + i * 34, 340, 32, () => this.activatePause(), () => { this.pauseSel = i; });
+      ctx.fillText((i === this.pauseSel ? '▶ ' : '') + s, VW / 2, VH / 2 - 64 + i * 32);
+      this.addHot(VW / 2 - 170, VH / 2 - 87 + i * 32, 340, 30, () => this.activatePause(), () => { this.pauseSel = i; });
     });
     ctx.fillStyle = 'rgba(200,200,200,0.55)'; ctx.font = '12px ' + FONT;
     const hp = [{ k: 'move' }, '移动', { k: 'jump' }, '跳跃', { k: 'dash' }, '冲刺'];
@@ -975,7 +986,7 @@ const Game = {
     if (!Input.usingPad) hp.push({ k: 'restart' }, '自毁重构', { k: 'mute' }, '静音');
     drawHintLine(ctx, VW / 2, VH - 50, hp, { align: 'center' });
     drawHintLine(ctx, VW / 2, VH - 24, [{ k: 'confirm' }, '确认', { k: 'back' }, '返回'], { align: 'center' });
-    if (Input.usingPad) { ctx.fillStyle = 'rgba(120,255,220,0.6)'; ctx.font = '12px ' + FONT; ctx.fillText('当前设备：' + Input.padName, VW / 2, 430); }
+    if (Input.usingPad) { ctx.fillStyle = 'rgba(120,255,220,0.6)'; ctx.font = '12px ' + FONT; ctx.fillText('当前设备：' + Input.padName, VW / 2, VH - 72); }
     ctx.textAlign = 'left';
   },
 
